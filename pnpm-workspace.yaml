@@ -1,0 +1,8 @@
+minimumReleaseAgeExclude:
+  - '@deepseek-ai/dsh-brand@0.2.2-rc.2'
+  - '@deepseek-ai/dsh-typert-protocol@0.2.2-rc.2'
+# The DeepSeek Harness bundled node refuses native addons signed by other teams, so rolldown (tsdown) runs
+# on its WebAssembly binding instead.
+supportedArchitectures:
+  os: [current]
+  cpu: [current, wasm32]

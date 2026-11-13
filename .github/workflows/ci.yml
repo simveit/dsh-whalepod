@@ -1,0 +1,65 @@
+# Typecheck, test, build and pack on every push and pull request.
+#
+# Untested: this workflow has not run on GitHub yet. It uses plain Node 24 and pnpm 11 instead of the
+# toolchain inside the DeepSeek Harness app; the lockfile and pnpm-workspace.yaml are the same. The build
+# script forces rolldown's WebAssembly binding (NAPI_RS_FORCE_WASI=true), which Linux does not need but
+# which keeps the output identical to a build with the app's Node.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # lib/ is committed as a release build, so that a `github:` install needs no build step.
+      # scripts/dev.sh compiles a fake data source into the client; that build must never be committed.
+      - name: Committed lib/ has no development build
+        run: |
+          if git ls-files --error-unmatch lib/client.js >/dev/null 2>&1; then
+            if grep -q -e coordinatorSource -e dco-fake lib/client.js; then
+              echo "lib/client.js is a development build (fake data source). Run 'pnpm run build' and commit lib/ again." >&2
+              exit 1
+            fi
+          fi
+
+      - uses: pnpm/action-setup@v6
+        with:
+          # The pnpm the DeepSeek Harness app bundles (runtime/versions.json).
+          version: 11.28.5
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # typecheck, tests, build and a pack dry run
+      - run: pnpm run check
+
+      # The committed lib/ must equal the build that `check` just made. After a change to src/, run
+      # `pnpm run build` and commit lib/ with it.
+      - name: Committed lib/ matches the release build
+        run: |
+          if git ls-files --error-unmatch lib/index.js >/dev/null 2>&1; then
+            git diff --exit-code --stat -- lib
+            untracked=$(git ls-files --others -- lib)
+            if [ -n "$untracked" ]; then
+              echo "The build made files that are not committed:" >&2
+              echo "$untracked" >&2
+              exit 1
+            fi
+          else
+            echo "lib/ is not committed; nothing to compare."
+          fi

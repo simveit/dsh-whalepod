@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="t">
+  <title id="t">Whalepod: coordinator girl with whale helpers on a ring</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F3F7FF"/>
+      <stop offset="1" stop-color="#D6E3FF"/>
+    </linearGradient>
+    <linearGradient id="hair" gradientUnits="userSpaceOnUse" x1="0" y1="60" x2="0" y2="300">
+      <stop offset="0" stop-color="#2D43B8"/>
+      <stop offset="0.5" stop-color="#4F70EE"/>
+      <stop offset="1" stop-color="#93B8FF"/>
+    </linearGradient>
+    <linearGradient id="iris" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#18205E"/>
+      <stop offset="0.5" stop-color="#3756DD"/>
+      <stop offset="1" stop-color="#7FC0FF"/>
+    </linearGradient>
+    <clipPath id="panel"><rect x="0" y="0" width="256" height="256" rx="56"/></clipPath>
+    <!-- bold whale helper, facing right, centred on 0,0 -->
+    <g id="whale" stroke="#23306E" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M-24,8 C-36,6 -42,-2 -44,-10 C-54,-12 -60,-22 -60,-32 C-50,-26 -46,-24 -42,-22 C-42,-30 -38,-38 -30,-42 C-30,-30 -32,-18 -28,-10 C-26,-4 -24,0 -20,2 Z" fill="#9DB8FF"/>
+      <path d="M-30,2 C-30,-20 -12,-32 6,-32 C28,-32 38,-14 38,2 C38,18 22,27 2,27 C-18,27 -30,16 -30,2 Z" fill="#9DB8FF"/>
+      <path d="M-24,11 Q6,30 35,8 Q31,25 2,26 Q-18,25 -24,11 Z" fill="#FFFFFF" stroke-width="4"/>
+      <ellipse cx="15" cy="-6" rx="6.5" ry="7.5" fill="#23306E" stroke="none"/>
+      <circle cx="13" cy="-9" r="2.6" fill="#FFFFFF" stroke="none"/>
+      <ellipse cx="27" cy="6" rx="6" ry="3.6" fill="#FF9DB4" stroke="none" opacity="0.9"/>
+    </g>
+    <!-- simplified eye -->
+    <g id="eye">
+      <ellipse cx="0" cy="1" rx="14" ry="17.5" fill="#FFFFFF"/>
+      <ellipse cx="0" cy="2" rx="12.5" ry="16" fill="url(#iris)"/>
+      <ellipse cx="0" cy="0" rx="6" ry="8" fill="#121A4C"/>
+      <ellipse cx="-4.5" cy="-6" rx="5" ry="6" fill="#FFFFFF"/>
+      <circle cx="5" cy="9" r="2.6" fill="#FFFFFF"/>
+    </g>
+  </defs>
+  <rect x="0" y="0" width="256" height="256" rx="56" fill="url(#bg)"/>
+  <g clip-path="url(#panel)">
+  <circle cx="128" cy="132" r="96" fill="none" stroke="#B8CBF5" stroke-width="14"/>
+  <g transform="translate(17.8,55.0) scale(0.58)">
+  <g stroke="#23306E" stroke-width="3.6" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M128,198 C104,208 90,230 96,254 C100,270 90,284 94,300 C98,312 86,318 76,316 C92,328 114,316 114,298 C116,282 124,270 124,254 C124,238 134,226 146,214 Z" fill="url(#hair)"/>
+    <path d="M252,198 C276,208 290,230 284,254 C280,270 290,284 286,300 C282,312 294,318 304,316 C288,328 266,316 266,298 C264,282 256,270 256,254 C256,238 246,226 234,214 Z" fill="url(#hair)"/>
+    <path d="M120,160 C106,140 110,110 126,94 C130,76 150,62 170,62 C180,56 200,56 210,62 C230,62 250,76 254,94 C270,110 274,140 260,160 C266,180 262,200 250,214 L130,214 C118,200 114,180 120,160 Z" fill="url(#hair)"/>
+    <path d="M150,212 C164,204 216,204 230,212 C240,236 248,270 252,330 L128,330 C132,270 140,236 150,212 Z" fill="#FFFFFF"/>
+    <path d="M140,218 C146,196 234,196 240,218 C224,232 156,232 140,218 Z" fill="#4D6BFE"/>
+    <path d="M181,214 L178,240 M199,214 L202,240" fill="none" stroke-width="3"/>
+    <circle cx="178" cy="243" r="4.5" fill="#4D6BFE" stroke-width="2.6"/>
+    <circle cx="202" cy="243" r="4.5" fill="#4D6BFE" stroke-width="2.6"/>
+    <path d="M128,150 C128,108 156,92 190,92 C224,92 252,108 252,150 C252,184 226,206 190,206 C154,206 128,184 128,150 Z" fill="#FFE6D8"/>
+    <path d="M134,128 C124,160 126,192 136,214 C142,198 144,178 146,150 Z" fill="url(#hair)"/>
+    <path d="M246,128 C256,160 254,192 244,214 C238,198 236,178 234,150 Z" fill="url(#hair)"/>
+    <path d="M120,156 C112,98 148,61 190,61 C232,61 268,98 262,156 C258,142 254,130 246,122 C248,136 246,148 242,158 C236,140 228,126 216,116 C216,130 212,142 204,152 C202,134 196,122 186,112 C182,128 172,140 158,148 C162,136 162,124 158,116 C150,126 144,140 140,156 C136,146 132,138 132,128 C126,136 122,146 120,156 Z" fill="url(#hair)"/>
+    <path d="M156,90 C172,81 210,81 228,90 L222,97 L215,90 L207,98 L199,90 L191,98 L183,90 L175,98 L167,90 L161,92 Z" fill="#B9CFFF" stroke="none" opacity="0.9"/>
+    <path d="M186,74 C178,56 192,44 206,48 C198,54 194,60 194,72 Z" fill="#3550D2"/>
+    <ellipse cx="124" cy="206" rx="8.5" ry="10.5" fill="#4D6BFE" transform="rotate(35 124 206)"/>
+    <ellipse cx="256" cy="206" rx="8.5" ry="10.5" fill="#4D6BFE" transform="rotate(-35 256 206)"/>
+    <g transform="translate(240,112) rotate(22) scale(1.45)">
+      <path d="M-3,16 L-2,8 C-9,8 -17,5 -22,-4 C-15,-2 -6,-1 0,3 C6,-1 15,-2 22,-4 C17,5 9,8 2,8 L3,16 Z" fill="#FFFFFF" stroke-width="2.4"/>
+    </g>
+  </g>
+  <use href="#eye" transform="translate(162,163) scale(1.18,1.1)"/>
+  <use href="#eye" transform="translate(218,163) scale(1.18,1.1)"/>
+  <g fill="none" stroke="#23306E" stroke-linecap="round">
+    <path d="M146,153 Q158,138 181,146" stroke-width="6"/>
+    <path d="M234,153 Q222,138 199,146" stroke-width="6"/>
+  </g>
+  <ellipse cx="144" cy="186" rx="12" ry="7" fill="#FF9DB4" opacity="0.75"/>
+  <ellipse cx="236" cy="186" rx="12" ry="7" fill="#FF9DB4" opacity="0.75"/>
+  <path d="M181,185 Q190,202 199,185 Q190,189 181,185 Z" fill="#B83A58" stroke="#23306E" stroke-width="2.6" stroke-linejoin="round"/>
+  </g>
+  <use href="#whale" transform="translate(128,40) rotate(0) scale(0.54,0.54)"/>
+  <use href="#whale" transform="translate(214,176) rotate(30) scale(-0.54,0.54)"/>
+  <use href="#whale" transform="translate(42,176) rotate(-30) scale(0.54,0.54)"/>
+  </g>
+  <rect x="2" y="2" width="252" height="252" rx="54" fill="none" stroke="#B8CBF5" stroke-width="4"/>
+</svg>

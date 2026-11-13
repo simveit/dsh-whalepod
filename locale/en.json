@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Whalepod",
+    "description": "Coordinator chats that hand work to Executor Sessions, follow them and report the results.",
+    "detail": "docs/plugin-page.md"
+  }
+}

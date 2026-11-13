@@ -1,0 +1,94 @@
+{
+  "name": "dsh-whalepod",
+  "version": "0.1.0",
+  "description": "Whalepod: Coordinator chats for the DeepSeek Harness (dsh) that hand work to independent Executor Sessions, follow them and report the results.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "deepseek",
+    "whalepod",
+    "coordinator",
+    "multi-agent",
+    "agents"
+  ],
+  "author": "simveit (https://github.com/simveit)",
+  "homepage": "https://github.com/simveit/dsh-whalepod#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simveit/dsh-whalepod.git"
+  },
+  "bugs": {
+    "url": "https://github.com/simveit/dsh-whalepod/issues"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "icon": "docs/assets/icon.svg",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "lib",
+    "prompts",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs/assets/icon.svg",
+    "docs/assets/mascot.svg",
+    "docs/plugin-page.md",
+    "docs/plugin-page.zh-CN.md",
+    "!docs/README.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "dsh": ">=0.2.2-rc.2 <0.3.0-0"
+  },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('lib',{recursive:true,force:true})\" && tsc -p tsconfig.host.json && NAPI_RS_FORCE_WASI=true tsdown",
+    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "node --test tests/*.test.ts",
+    "prepack": "node \"$npm_execpath\" run build",
+    "check": "node \"$npm_execpath\" run typecheck && node \"$npm_execpath\" test && node \"$npm_execpath\" run build && node \"$npm_execpath\" pack --dry-run"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.2.2-rc.2 <0.3.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.2",
+    "@rolldown/binding-wasm32-wasi": "1.2.19",
+    "@types/node": "24.19.2",
+    "@types/react": "18.3.28",
+    "react": "18.3.1",
+    "tsdown": "0.22.14",
+    "typescript": "6.0.3",
+    "zod": "4.6.6"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.team/
+.dsh-home/
+dev-threads/
+*.tgz
+.DS_Store
+tests/_scratch/
+.pack/

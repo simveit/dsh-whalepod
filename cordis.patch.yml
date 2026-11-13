@@ -1,0 +1,28 @@
+# Bundle layer of Whalepod (package dsh-whalepod), the plugin behind the Coordinator. It mounts the host service (and auto review, below). It declares no agent preset:
+# coordinators and Executor Sessions run on the user's stock `standard` preset, so their Sessions keep working when
+# the plugin is removed, and the preset picker of other Sessions shows nothing new. The host service adds the role
+# prompts (prompts/*.md) and the coordinator and executor tools only to coordinator chats and tracked Leads, narrows
+# each coordinator to its allow list at runtime (no shell, write, subagent, terminal or third-party tools unless
+# listed in coordinatorExtraTools), and moves Sessions of earlier releases off the old `thread` and `coordinator`
+# presets once. The web client half is declared in package.json (dsh.client).
+#
+# Auto mode: Executor Sessions run under the `auto` permission preset, which only the shipped optional bundle
+# @deepseek-ai/dsh-experimental-auto-review registers. dsh has no bundle-dependency field, so this layer inserts
+# that bundle's own single row (same id, same package, resolved from the dsh installation; nothing is downloaded).
+# If the user also enables the bundle in the plugin manager, both layers insert an identical `auto-review` row
+# and the loader mounts it once (entries are keyed by id). Removing dsh-whalepod removes the row with this
+# layer. To run without auto review, disable the row in the profile patch: `- id: auto-review` + `disabled: true`;
+# Executor Sessions then run in workspace-write (Ask me). When the plugin is unloaded (removed from a running app,
+# or at quit) it first moves its Executor Sessions to workspace-write, because the auto-review bundle would switch
+# them to full access; on its next load it puts back the mode each one was started in.
+#
+# Host config: all keys are optional. Override the row `dsh-coordinator` in a profile patch (the row id keeps the
+# name the plugin had before it became dsh-whalepod, so existing settings rows still match; give such a row no
+# `name`, or `name: dsh-whalepod`, because the loader skips a row whose name differs from the entry's).
+# The keys and their defaults are listed in README.md, section Configuration (coordinatorBase, maxRunningThreads,
+# threadPermission, coordinatorExtraTools, the notice, wake, turn and peer limits, and the legacy threadsRoot).
+- insert:
+    - id: auto-review
+      name: '@deepseek-ai/dsh-experimental-auto-review'
+    - id: dsh-coordinator
+      name: dsh-whalepod

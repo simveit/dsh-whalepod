@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Whalepod",
+    "description": "协调者聊天把工作交给执行器，跟进它们并汇报结果。",
+    "detail": "docs/plugin-page.zh-CN.md"
+  }
+}

@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" width="640" height="420" role="img" aria-labelledby="t">
+  <title id="t">Whalepod mascot: a coordinator girl handing assignment cards to four little whale helpers</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F3F7FF"/>
+      <stop offset="1" stop-color="#DCE7FF"/>
+    </linearGradient>
+    <linearGradient id="hair" gradientUnits="userSpaceOnUse" x1="0" y1="60" x2="0" y2="300">
+      <stop offset="0" stop-color="#2D43B8"/>
+      <stop offset="0.5" stop-color="#4F70EE"/>
+      <stop offset="1" stop-color="#93B8FF"/>
+    </linearGradient>
+    <linearGradient id="iris" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#18205E"/>
+      <stop offset="0.45" stop-color="#3756DD"/>
+      <stop offset="1" stop-color="#7FC0FF"/>
+    </linearGradient>
+    <radialGradient id="blush">
+      <stop offset="0" stop-color="#FF8FAA" stop-opacity="1"/>
+      <stop offset="1" stop-color="#FF9DB4" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="faceClip">
+      <path d="M128,150 C128,108 156,92 190,92 C224,92 252,108 252,150 C252,184 226,206 190,206 C154,206 128,184 128,150 Z"/>
+    </clipPath>
+    <marker id="ab" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M1,1 L8,5 L1,9" fill="none" stroke="#4D6BFE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M1,1 L8,5 L1,9" fill="none" stroke="#22A892" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <!-- eye, centred on 0,0 -->
+    <g id="eye">
+      <ellipse cx="0" cy="1" rx="13.5" ry="17" fill="#FFFFFF"/>
+      <ellipse cx="0" cy="2" rx="12" ry="15.5" fill="url(#iris)"/>
+      <ellipse cx="0" cy="11" rx="8" ry="4" fill="#A6DBFF" opacity="0.8"/>
+      <ellipse cx="0" cy="0" rx="5.5" ry="7.5" fill="#121A4C"/>
+      <ellipse cx="-4.5" cy="-6" rx="4.6" ry="5.6" fill="#FFFFFF"/>
+      <circle cx="5" cy="9" r="2.3" fill="#FFFFFF"/>
+      <circle cx="6" cy="-6" r="1.3" fill="#FFFFFF"/>
+    </g>
+    <!-- little whale helper, facing right, centred on 0,0 -->
+    <g id="whale" stroke="#23306E" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M-26,8 C-36,6 -42,-2 -44,-10 C-52,-12 -58,-20 -58,-28 C-50,-24 -46,-22 -42,-20 C-42,-28 -38,-34 -32,-38 C-32,-28 -34,-18 -30,-10 C-28,-4 -26,0 -22,2 Z" fill="#7FA0FF"/>
+      <path d="M-30,2 C-30,-20 -12,-31 6,-31 C27,-31 37,-14 37,2 C37,18 22,26 2,26 C-18,26 -30,16 -30,2 Z" fill="#7FA0FF"/>
+      <path d="M-24,10 Q4,30 34,8 Q31,24 2,25 Q-18,24 -24,10 Z" fill="#FFFFFF" stroke-width="2"/>
+      <ellipse cx="14" cy="-6" rx="5" ry="6" fill="#23306E" stroke="none"/>
+      <circle cx="12.4" cy="-8.4" r="2" fill="#FFFFFF" stroke="none"/>
+      <circle cx="16" cy="-3" r="1" fill="#FFFFFF" stroke="none"/>
+      <ellipse cx="25" cy="5" rx="5" ry="3" fill="url(#blush)" stroke="none"/>
+      <path d="M17,6 Q21,12 25,6 Z" fill="#E5607A" stroke-width="1.6"/>
+      <path d="M-10,-20 Q0,-26 10,-21" fill="none" stroke="#C2D4FF" stroke-width="4"/>
+    </g>
+  </defs>
+
+  <!-- backdrop panel -->
+  <rect x="6" y="6" width="628" height="408" rx="40" fill="url(#bg)" stroke="#BFD0F7" stroke-width="2"/>
+  <path d="M6,350 C120,330 220,368 330,350 C440,332 540,366 634,346 L634,374 A40,40 0 0 1 594,414 L46,414 A40,40 0 0 1 6,374 Z" fill="#C9D9FF" opacity="0.7"/>
+  <g fill="#FFFFFF" opacity="0.9">
+    <circle cx="60" cy="70" r="5"/><circle cx="76" cy="52" r="3"/><circle cx="600" cy="56" r="4"/>
+    <circle cx="300" cy="60" r="3"/><circle cx="612" cy="380" r="3"/>
+  </g>
+  <g fill="#FFFFFF">
+    <path d="M330,96 l3,-9 l3,9 l9,3 l-9,3 l-3,9 l-3,-9 l-9,-3 z"/>
+    <path d="M598,236 l2,-6 l2,6 l6,2 l-6,2 l-2,6 l-2,-6 l-6,-2 z"/>
+    <path d="M70,200 l2,-6 l2,6 l6,2 l-6,2 l-2,6 l-2,-6 l-6,-2 z"/>
+  </g>
+  <path d="M84,120 l3,-10 l3,10 l10,3 l-10,3 l-3,10 l-3,-10 l-10,-3 z" fill="#FFC857" stroke="#23306E" stroke-width="1.8" stroke-linejoin="round"/>
+
+  <!-- delegation paths: blue = assignment out, teal = report back -->
+  <g fill="none" stroke-width="3" stroke-dasharray="2 8" stroke-linecap="round">
+    <path d="M306,174 C336,140 362,118 386,108" stroke="#4D6BFE" marker-end="url(#ab)"/>
+    <path d="M512,168 C460,166 384,176 318,192" stroke="#22A892" marker-end="url(#at)"/>
+    <path d="M308,200 C380,240 444,282 500,298" stroke="#4D6BFE" marker-end="url(#ab)"/>
+    <path d="M370,330 C340,318 318,286 304,222" stroke="#22A892" marker-end="url(#at)"/>
+  </g>
+
+  <!-- cards in flight -->
+  <g stroke="#23306E" stroke-width="2" stroke-linejoin="round">
+    <g transform="translate(342,144) rotate(-18)">
+      <rect x="-14" y="-10" width="28" height="20" rx="4" fill="#FFFFFF"/>
+      <rect x="-14" y="-10" width="28" height="6" rx="3" fill="#4D6BFE" stroke="none"/>
+      <path d="M-8,2 H8 M-8,6 H3" stroke="#A9C1FF" stroke-width="2"/>
+    </g>
+    <g transform="translate(416,174) rotate(8)">
+      <rect x="-14" y="-10" width="28" height="20" rx="4" fill="#FFFFFF"/>
+      <path d="M-6,0 L-1,5 L8,-5" fill="none" stroke="#22A892" stroke-width="3" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(404,260) rotate(14)">
+      <rect x="-14" y="-10" width="28" height="20" rx="4" fill="#FFFFFF"/>
+      <rect x="-14" y="-10" width="28" height="6" rx="3" fill="#4D6BFE" stroke="none"/>
+      <path d="M-8,2 H8 M-8,6 H3" stroke="#A9C1FF" stroke-width="2"/>
+    </g>
+    <g transform="translate(330,296) rotate(-24)">
+      <rect x="-14" y="-10" width="28" height="20" rx="4" fill="#FFFFFF"/>
+      <path d="M-6,0 L-1,5 L8,-5" fill="none" stroke="#22A892" stroke-width="3" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- helper 1: laptop -->
+  <use href="#whale" transform="translate(430,100) scale(-1,1)"/>
+  <g transform="translate(436,128)" stroke="#23306E" stroke-width="2.2" stroke-linejoin="round">
+    <rect x="-16" y="-20" width="32" height="20" rx="3" fill="#EAF1FF"/>
+    <path d="M-10,-13 H6 M-10,-8 H2" stroke="#4D6BFE" stroke-width="2"/>
+    <path d="M-21,0 H21 L18,5 H-18 Z" fill="#A9C1FF"/>
+  </g>
+  <!-- helper 2: gear -->
+  <use href="#whale" transform="translate(560,160) scale(-1,1)"/>
+  <g transform="translate(534,106)">
+    <circle r="11" fill="none" stroke="#23306E" stroke-width="7" stroke-dasharray="4.3 4.3"/>
+    <circle r="9" fill="#FFC857" stroke="#23306E" stroke-width="2.2"/>
+    <circle r="3.4" fill="#F1F6FF" stroke="#23306E" stroke-width="2"/>
+  </g>
+  <!-- helper 3: magnifier -->
+  <use href="#whale" transform="translate(548,298) scale(-1,1)"/>
+  <g transform="translate(498,262) rotate(90)" stroke="#23306E" stroke-linecap="round">
+    <path d="M7,7 L16,16" stroke-width="5"/>
+    <circle r="10" fill="#EAF1FF" stroke-width="2.6"/>
+    <path d="M-5,-3 A6,6 0 0 1 -1,-6" fill="none" stroke="#FFFFFF" stroke-width="2.4"/>
+  </g>
+  <!-- helper 4: writes report -->
+  <use href="#whale" transform="translate(412,332) scale(-1,1)"/>
+  <g transform="translate(404,362) rotate(-6)" stroke="#23306E" stroke-width="2.2" stroke-linejoin="round">
+    <rect x="-15" y="-11" width="30" height="22" rx="4" fill="#FFFFFF"/>
+    <path d="M-7,0 L-2,5 L8,-5" fill="none" stroke="#22A892" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- ===== coordinator girl ===== -->
+  <ellipse cx="190" cy="380" rx="92" ry="9" fill="#B6C8F5"/>
+  <!-- podium -->
+  <g stroke="#23306E" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M118,336 L262,336 L254,378 L126,378 Z" fill="#2A3F9A"/>
+    <rect x="108" y="324" width="164" height="16" rx="8" fill="#4D6BFE"/>
+    <path d="M118,328 H200" stroke="#8EA6FF" stroke-width="3"/>
+    <g stroke="#A9C1FF" stroke-width="2.5" fill="#A9C1FF">
+      <path d="M190,348 L176,366 M190,348 L190,366 M190,348 L204,366" fill="none"/>
+      <circle cx="190" cy="347" r="4"/>
+      <circle cx="176" cy="367" r="3"/><circle cx="190" cy="367" r="3"/><circle cx="204" cy="367" r="3"/>
+    </g>
+  </g>
+
+  <g stroke="#23306E" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+    <!-- twin tails (behind) -->
+    <path d="M128,198 C104,208 90,230 96,254 C100,270 90,284 94,300 C98,312 86,318 76,316 C92,328 114,316 114,298 C116,282 124,270 124,254 C124,238 134,226 146,214 Z" fill="url(#hair)"/>
+    <path d="M252,198 C276,208 290,230 284,254 C280,270 290,284 286,300 C282,312 294,318 304,316 C288,328 266,316 266,298 C264,282 256,270 256,254 C256,238 246,226 234,214 Z" fill="url(#hair)"/>
+    <path d="M108,228 C102,246 108,264 102,292" fill="none" stroke="#B4CCFF" stroke-width="2.4" opacity="0.9"/>
+    <path d="M272,228 C278,246 272,264 278,292" fill="none" stroke="#B4CCFF" stroke-width="2.4" opacity="0.9"/>
+    <!-- back hair -->
+    <path d="M120,160 C106,140 110,110 126,94 C130,76 150,62 170,62 C180,56 200,56 210,62 C230,62 250,76 254,94 C270,110 274,140 260,160 C266,180 262,200 250,214 L130,214 C118,200 114,180 120,160 Z" fill="url(#hair)"/>
+    <!-- hood behind shoulders -->
+    <path d="M144,216 C148,196 232,196 236,216 C222,228 158,228 144,216 Z" fill="#4D6BFE"/>
+    <path d="M154,214 C166,206 214,206 226,214" fill="none" stroke="#8EA6FF" stroke-width="3"/>
+    <!-- legs -->
+    <path d="M163,284 L163,318 L179,318 L179,284 Z" fill="#FFE6D8"/>
+    <path d="M201,284 L201,318 L217,318 L217,284 Z" fill="#FFE6D8"/>
+    <path d="M163,304 H179 V318 H163 Z M201,304 H217 V318 H201 Z" fill="#FFFFFF"/>
+    <path d="M163,308 H179 M201,308 H217" stroke="#4D6BFE" stroke-width="2.4"/>
+    <path d="M156,326 C156,316 162,314 171,314 C181,314 184,318 184,326 Z" fill="#3049B8"/>
+    <path d="M196,326 C196,318 199,314 209,314 C218,314 224,316 224,326 Z" fill="#3049B8"/>
+    <!-- jacket -->
+    <path d="M152,210 C162,204 218,204 228,210 C236,238 242,262 247,284 C230,293 150,293 133,284 C138,262 144,238 152,210 Z" fill="#FFFFFF"/>
+    <path d="M150,226 C146,246 142,266 138,282 C146,286 152,287 158,288 C156,268 156,246 158,228 Z" fill="#DDE6FF" stroke="none"/>
+    <path d="M135,276 C150,284 230,284 245,276 L247,284 C230,293 150,293 133,284 Z" fill="#4D6BFE"/>
+    <path d="M190,212 L190,286" stroke="#A9C1FF" stroke-width="2"/>
+    <path d="M181,212 C180,222 179,230 178,238 M199,212 C200,222 201,230 202,238" fill="none" stroke-width="2"/>
+    <circle cx="178" cy="241" r="3.4" fill="#4D6BFE" stroke-width="1.8"/>
+    <circle cx="202" cy="241" r="3.4" fill="#4D6BFE" stroke-width="1.8"/>
+    <!-- clipboard -->
+    <g transform="translate(168,252) rotate(-10)">
+      <rect x="-22" y="-27" width="44" height="54" rx="5" fill="#A9C1FF"/>
+      <rect x="-16" y="-20" width="32" height="41" rx="2" fill="#FFFFFF" stroke-width="2"/>
+      <rect x="-8" y="-32" width="16" height="9" rx="3" fill="#4D6BFE"/>
+      <path d="M-11,-11 l3,3 l5,-6 M-11,0 l3,3 l5,-6 M-11,11 l3,3 l5,-6" fill="none" stroke="#22A892" stroke-width="2"/>
+      <path d="M0,-10 H10 M0,1 H10 M0,12 H7" stroke="#A9C1FF" stroke-width="2"/>
+    </g>
+    <!-- arm hugging clipboard -->
+    <path d="M152,212 C136,228 136,256 150,264 C162,270 178,266 186,258 L180,246 C170,251 160,249 158,240 C157,230 160,220 158,212 Z" fill="#FFFFFF"/>
+    <path d="M176,250 L184,262" stroke="#4D6BFE" stroke-width="4"/>
+    <circle cx="188" cy="255" r="7" fill="#FFE6D8"/>
+    <!-- raised arm with card -->
+    <path d="M224,222 C242,214 256,204 268,198" fill="none" stroke="#23306E" stroke-width="22"/>
+    <path d="M224,222 C242,214 256,204 268,198" fill="none" stroke="#FFFFFF" stroke-width="17"/>
+    <path d="M261,192 L268,206" stroke="#4D6BFE" stroke-width="5"/>
+    <g transform="translate(290,182) rotate(-14)">
+      <rect x="-17" y="-13" width="34" height="26" rx="4" fill="#FFFFFF"/>
+      <rect x="-17" y="-13" width="34" height="8" rx="3" fill="#4D6BFE" stroke="none"/>
+      <path d="M-11,1 H11 M-11,6 H4" stroke="#A9C1FF" stroke-width="2"/>
+    </g>
+    <circle cx="277" cy="193" r="7.5" fill="#FFE6D8"/>
+
+    <!-- face -->
+    <path d="M128,150 C128,108 156,92 190,92 C224,92 252,108 252,150 C252,184 226,206 190,206 C154,206 128,184 128,150 Z" fill="#FFE6D8"/>
+    <g clip-path="url(#faceClip)" stroke="none">
+      <path d="M120,150 C124,136 134,130 140,150 C146,140 154,134 162,152 C170,140 180,124 188,118 C196,128 204,142 208,158 C214,140 222,130 232,124 C238,134 244,146 248,162 L260,100 L120,100 Z" fill="#F5CDBF"/>
+    </g>
+    <!-- side locks -->
+    <path d="M134,128 C124,160 126,192 136,214 C142,198 144,178 146,150 Z" fill="url(#hair)"/>
+    <path d="M246,128 C256,160 254,192 244,214 C238,198 236,178 234,150 Z" fill="url(#hair)"/>
+    <!-- fringe -->
+    <path d="M120,156 C112,98 148,61 190,61 C232,61 268,98 262,156 C258,142 254,130 246,122 C248,136 246,148 242,158 C236,140 228,126 216,116 C216,130 212,142 204,152 C202,134 196,122 186,112 C182,128 172,140 158,148 C162,136 162,124 158,116 C150,126 144,140 140,156 C136,146 132,138 132,128 C126,136 122,146 120,156 Z" fill="url(#hair)"/>
+    <path d="M156,90 C172,81 210,81 228,90 L222,96 L216,90 L209,97 L202,90 L195,97 L188,90 L181,97 L174,90 L167,97 L161,91 Z" fill="#B9CFFF" stroke="none" opacity="0.85"/>
+    <path d="M176,112 C182,104 186,96 186,86 M212,110 C214,102 214,94 210,86 M150,128 C150,116 154,108 160,100" fill="none" stroke="#2A3F9A" stroke-width="1.6" opacity="0.6"/>
+    <path d="M196,112 C200,120 200,128 198,134" fill="none" stroke="#2A3F9A" stroke-width="1.6" opacity="0.6"/>
+    <path d="M196,80 C204,78 212,80 218,84" fill="none" stroke="#FFFFFF" stroke-width="3" opacity="0.9"/>
+    <!-- ahoge -->
+    <path d="M188,72 C182,56 192,46 204,50 C196,54 192,60 194,72 Z" fill="#3550D2"/>
+    <path d="M194,70 C200,58 212,58 216,64 C208,62 202,66 198,72 Z" fill="#3550D2"/>
+    <!-- hair ties -->
+    <ellipse cx="124" cy="206" rx="7.5" ry="9.5" fill="#4D6BFE" transform="rotate(35 124 206)"/>
+    <ellipse cx="256" cy="206" rx="7.5" ry="9.5" fill="#4D6BFE" transform="rotate(-35 256 206)"/>
+    <!-- whale-tail hair clip -->
+    <g transform="translate(240,114) rotate(22) scale(1.2)">
+      <path d="M-3,16 L-2,8 C-9,8 -17,5 -22,-4 C-15,-2 -6,-1 0,3 C6,-1 15,-2 22,-4 C17,5 9,8 2,8 L3,16 Z" fill="#E4EEFF" stroke-width="2"/>
+    </g>
+  </g>
+  <!-- eyes and expression -->
+  <use href="#eye" transform="translate(162,163) scale(1.16,1.08)"/>
+  <use href="#eye" transform="translate(218,163) scale(1.16,1.08)"/>
+  <g fill="none" stroke="#23306E" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M147,153 Q158,139 180,146" stroke-width="5.5"/>
+    <path d="M147,153 L141,151 M148,149 L143,144" stroke-width="2.6"/>
+    <path d="M233,153 Q222,139 200,146" stroke-width="5.5"/>
+    <path d="M233,153 L239,151 M232,149 L237,144" stroke-width="2.6"/>
+    <path d="M157,183 Q163,184.5 169,183 M211,183 Q217,184.5 223,183" stroke-width="1.6"/>
+  </g>
+  <ellipse cx="146" cy="185" rx="15" ry="9" fill="url(#blush)"/>
+  <ellipse cx="234" cy="185" rx="15" ry="9" fill="url(#blush)"/>
+  <g stroke="#F07D98" stroke-width="1.4" stroke-linecap="round">
+    <path d="M142,186 l3,-4 M147,186 l3,-4 M230,186 l3,-4 M235,186 l3,-4"/>
+  </g>
+  <circle cx="190" cy="178" r="1.1" fill="#C98B7C"/>
+  <path d="M182,186 Q190,200 198,186 Q190,189 182,186 Z" fill="#B83A58" stroke="#23306E" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M185.5,193 Q190,191 194.5,193 Q190,197.5 185.5,193 Z" fill="#FF8FA6"/>
+</svg>

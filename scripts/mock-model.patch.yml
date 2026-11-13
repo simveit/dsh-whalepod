@@ -1,0 +1,8 @@
+# DEV-ONLY overlay that scripts/dev.sh passes to `dsh web --patch` when DSH_COORDINATOR_MOCK_URL is set.
+# A dev home's own profile patch may pin the default model to another provider; the mock model only answers the
+# DeepSeek API-key route (DEEPSEEK_BASE_URL), so new Sessions must start on that route.
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: deepseek-official
+    model: deepseek-flash
