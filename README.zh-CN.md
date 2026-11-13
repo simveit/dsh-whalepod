@@ -8,6 +8,8 @@
 
 Whalepod（包名 `dsh-whalepod`）是 DeepSeek Harness（dsh）的一个插件，用来添加“协调者”。协调者是负责分派工作的主会话：你在它的对话里描述要做的事，它的智能体把每项任务交给一个独立的执行器 Session，跟进进展，并把结果汇报给你。你可以同时运行多个协调者，每个负责一项工作。每个协调者都有一个名字，例如“Noether”或“李白”。
 
+**安装：** 在 DeepSeek Harness 中打开“插件” > “添加插件”，输入 `dsh-whalepod@0.1.0`，点击“安装”。详见[安装](#安装)。
+
 执行器 Session 会自主运行，默认开启智能体团队（Agent Teams），每个执行器都有自己的文件夹，并在侧边栏中紧挨着它的协调者拥有自己的分组。同一个协调者下的执行器在处理同一任务时可以互相发消息；不同协调者的执行器之间不能通信。执行器的 Lead（主智能体）可以把任务拆给一个智能体团队。只要还有队友在工作，执行器就显示为运行中；整个团队完成后，协调者只会收到一次通知。
 
 执行器 Session 默认以 dsh 的“自动审查”方式运行，此模式下没有文件沙箱；“协调者”页面可以把新的执行器切换为“询问我”。两种方式以及插件强制执行的边界见[安全](#安全)一节。
@@ -44,12 +46,12 @@ Whalepod（包名 `dsh-whalepod`）是 DeepSeek Harness（dsh）的一个插件�
 
 Whalepod 以 `dsh-whalepod` 发布在 npm 上。下面任何一种方式都不会在你的电脑上构建任何东西：包里已经带有构建好的代码。
 
-**在应用中安装。** 打开“插件”，选择“添加插件”，在“包名或地址”中输入 `dsh-whalepod`，然后点击“安装”。“Registry”下拉框保持官方 npm registry 即可。安装完成后选择“立即启用”。如果对话框提示需要重启 DSH，请退出应用再重新打开。
+**在应用中安装。** 打开“插件”，选择“添加插件”，在“包名或地址”中输入 `dsh-whalepod@0.1.0`，然后点击“安装”。“Registry”下拉框保持官方 npm registry 即可。安装完成后选择“立即启用”。如果对话框提示需要重启 DSH，请退出应用再重新打开。
 
 **通过命令行安装。** 安装到桌面版配置时，请先退出应用，安装完成后再重新打开。桌面版配置必须已经存在，因此首次安装前请先打开一次桌面应用。对于 `dsh web`，请使用 `--profile web`，然后重启 `dsh web`。
 
 ```sh
-dsh plugin --profile desktop add dsh-whalepod
+dsh plugin --profile desktop add dsh-whalepod@0.1.0
 ```
 
 **安装 GitHub 上的最新代码。** 如果想安装仓库的当前代码而不是已发布的包，可以在上述两处使用 `github:simveit/dsh-whalepod`。这需要 Git：
@@ -163,7 +165,7 @@ dsh plugin --profile desktop add github:simveit/dsh-whalepod
 
 ```sh
 dsh plugin --profile desktop remove dsh-coordinator          # 或：--profile web
-dsh plugin --profile desktop add dsh-whalepod                # 或 github:simveit/dsh-whalepod，见“安装”
+dsh plugin --profile desktop add dsh-whalepod@0.1.0                # 或 github:simveit/dsh-whalepod，见“安装”
 ```
 
 协调者、执行器和插件状态都会保留：插件的 id、状态文件夹（`$DSH_HOME/storages/dsh-coordinator/`）以及会话日志中的标记沿用旧名字。你在“插件”页面上做的设置也会保留，但 dsh 会跳过 `name` 写着旧包名的设置行。如果配置的 `cordis.patch.yml` 中有一行同时写着 `id: dsh-coordinator` 和 `name: dsh-coordinator`，请在下次启动前把这一行改成 `name: dsh-whalepod`（或删除它）。只有 `id: dsh-coordinator` 的行无需修改。
