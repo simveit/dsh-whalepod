@@ -393,6 +393,8 @@ What an executor's Sessions run on comes from one table, `targetPermission` in `
 - to the Lead when the executor starts (a Lead whose `workspace-write` cannot be set is not started), when dsh resumes it (`agent/created`), on restore, on `permission-presets/catalog-changed`, and when the plugin unloads;
 - to Teammates when they are created and at the same events. dsh seeds a Teammate with the Lead's preset and `approval/policy never`; the plugin only narrows a Teammate's sandbox (`sandbox/mode workspace-write`, as dsh's `setSandboxMode` writes it) and never widens it again.
 
+`auto` exists only while the user has dsh's optional bundle `@deepseek-ai/dsh-experimental-auto-review` (Plugins: Auto authorization review) switched on. The plugin's bundle layer inserts only its own row; up to 0.1.0 it also inserted the `auto-review` row, which made dsh's in-app Uninstall refuse the plugin whenever the user also had that bundle on (decision 64).
+
 A cold Lead whose log says `auto` cannot be resumed while Auto review is missing (dsh refuses); it is marked `needs-user`, listed in the `auto-unavailable` problem, and messages to it are refused until Auto review is back.
 
 ### Presets and prompts
@@ -472,7 +474,7 @@ Each executor's facts are restored with `restoredFacts`:
 
 Then a background pass folds each executor's log from its last `turn/start` (`foldTurn`), so open approvals and questions come back and a turn that ended while the plugin was away is reported to the coordinator. It also reads each session's title.
 
-When the plugin unloads (removed from a running app, or at quit), it moves every live Lead and Teammate to `workspace-write`; dsh's auto-review bundle, which this plugin brings in, would otherwise switch `auto` Sessions to `danger-full-access` on a live removal. On the next load each Lead gets its chosen mode back (see [Permission mode](#permission-mode)).
+When the plugin unloads (removed from a running app, or at quit), it moves every live Lead and Teammate to `workspace-write`; dsh's auto-review bundle, when the user switches it off or removes it, would otherwise switch `auto` Sessions to `danger-full-access` on a live removal. On the next load each Lead gets its chosen mode back (see [Permission mode](#permission-mode)).
 
 ## Remote contract
 

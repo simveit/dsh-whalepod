@@ -109,7 +109,7 @@ One table (`permission.ts`) decides what an executor's Sessions run on: the chos
 
 ### T7. Removing the plugin weakens running executors
 
-dsh's auto-review bundle, when removed from a running app, switches every `auto` session to `danger-full-access` with no approvals. This plugin brings that bundle in.
+dsh's auto-review bundle, when removed from a running app, switches every `auto` session to `danger-full-access` with no approvals. Since 0.1.1 the user switches that bundle on and off under Plugins (Auto authorization review); up to 0.1.0 the plugin's own layer inserted its row (decision 64). Either way the bundle can go away while the plugin runs, and the plugin can go away while the bundle stays.
 
 - **Host:** whenever the plugin unloads (live removal or quit), it first moves every live Lead and Teammate to `workspace-write`; if the bundle goes first, the plugin re-applies `workspace-write` on the catalog change. On the next load, each Lead gets its chosen mode back (live Leads at once, cold ones when dsh resumes them).
 - **dsh limit:** an executor whose log still says `auto` cannot be resumed while Auto review is not loaded. Such an executor shows as "Needs you" and in the page's `auto-unavailable` problem; messages to it are refused until Auto review is back.

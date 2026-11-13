@@ -250,7 +250,7 @@ Entries 1 to 37 were written before the second design round ("round 2" below), w
 
 ## 25. Threads leave auto mode when the plugin is removed from a running app
 
-**Context.** dsh's auto-review bundle switches every `auto` session to `danger-full-access` (no approvals) when it is removed from a running app. This plugin brings that bundle in.
+**Context.** dsh's auto-review bundle switches every `auto` session to `danger-full-access` (no approvals) when it is removed from a running app. Up to 0.1.0 this plugin brought that bundle in; since 0.1.1 the user switches it on (decision 64), and the same handling covers the user switching it off.
 
 **Decision.** On a live removal the plugin moves its threads to `workspace-write` and restores `auto` on its next load. Since round two this happens at every unload, quit included, and covers members; see decision 34.
 
@@ -633,3 +633,15 @@ Entries 1 to 37 were written before the second design round ("round 2" below), w
 **Upgrade.** dsh installs by package name, so the old package is removed and the new one added. Removal drops `dsh-coordinator` from the profile's bundle list (the plugin manager's reconcile removes a bundle whose dependency went away), so no stale entry remains. Both packages insert the row `dsh-coordinator`, so they cannot be installed together. dsh skips a profile patch row whose `name` differs from the entry's (`patch: name mismatch ... skipping`), and dsh's config editor writes rows with `name`, so a settings row saved on the Plugins page under the old package must have its `name` changed to `dsh-whalepod` (or removed); rows with only `id` keep applying.
 
 **Trade-offs.** Two names stay visible to people who read logs or the state folder. AGENTS.md says which strings are which.
+
+## 64. Auto review is the user's own switch; the bundle layer inserts only its own row
+
+**Context.** Up to 0.1.0 the bundle layer inserted the `auto-review` row of dsh's optional bundle `@deepseek-ai/dsh-experimental-auto-review`, so Auto review worked with a single install. The owner then could not uninstall Whalepod in the app: "Other configuration still uses this bundle's components; switch them off first." dsh's `removeBundle` deselects the bundle, reloads, and refuses while any running entry has the id and name of a row the bundle inserts. With the auto-review bundle also switched on, its identical `auto-review` row keeps running, so the in-app Uninstall and the in-app update always failed, and each attempt left Whalepod switched off. The command line `dsh plugin remove` has no such check.
+
+**Decision.** The bundle layer inserts only the `dsh-coordinator` row. Auto review is available when the user switches on "Auto authorization review" under Plugins. Without it, Executor Sessions run in Ask me (`workspace-write`), and the Coordinator page and the host log say how to switch Auto review on.
+
+**Why.** It is the only option that makes the in-app Uninstall work in every setup without relying on loader details. Inserting the row under another id would mount the reviewer twice and register `auto` twice. Inserting it with a different package specifier for the same module would pass the check only by accident of how names are compared, and the Plugins page would still list Auto review as one of Whalepod's components. Loading the reviewer as a child of the host service would tie the plugin to the bundle's internals and its own config. Making Auto review an explicit choice also fits its risk: it runs without a file sandbox.
+
+**Safety.** Nothing gets looser. When `auto` is missing, `targetPermission` yields `workspace-write`, live Leads and Teammates are moved there on the catalog change, and cold Leads whose log says `auto` cannot be resumed until Auto review is back (dsh refuses; the page lists them). The unload path still moves every live executor to `workspace-write` first, because the bundle switches `auto` sessions to full access when it goes away.
+
+**Trade-offs.** A user who relied on the row 0.1.0 inserted has Ask me after the update until they switch Auto authorization review on. A user with 0.1.0 and the bundle on must switch the bundle off before updating or uninstalling in the app, or use the command line; README, Upgrading, says so.

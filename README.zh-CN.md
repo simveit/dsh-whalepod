@@ -12,7 +12,7 @@ Whalepod（包名 `dsh-whalepod`）是 DeepSeek Harness（dsh）的一个插件�
 
 执行器 Session 会自主运行，默认开启智能体团队（Agent Teams），每个执行器都有自己的文件夹，并在侧边栏中紧挨着它的协调者拥有自己的分组。同一个协调者下的执行器在处理同一任务时可以互相发消息；不同协调者的执行器之间不能通信。执行器的 Lead（主智能体）可以把任务拆给一个智能体团队。只要还有队友在工作，执行器就显示为运行中；整个团队完成后，协调者只会收到一次通知。
 
-执行器 Session 默认以 dsh 的“自动审查”方式运行，此模式下没有文件沙箱；“协调者”页面可以把新的执行器切换为“询问我”。两种方式以及插件强制执行的边界见[安全](#安全)一节。
+如果你开启了 dsh 的“自动授权审查”插件，执行器 Session 默认以 dsh 的“自动审查”方式运行，此模式下没有文件沙箱。未开启时它们以“询问我”方式运行；“协调者”页面也随时可以把新的执行器切换为“询问我”。两种方式以及插件强制执行的边界见[安全](#安全)一节。
 
 ## 截图
 
@@ -60,11 +60,11 @@ dsh plugin --profile desktop add dsh-whalepod
 dsh plugin --profile desktop add github:simveit/dsh-whalepod
 ```
 
-安装就完成了。侧边栏中会出现“协调者”入口，协调者工具和自动审查即可使用。插件不添加任何智能体预设：执行器和协调者都使用你的 Standard 预设。
+安装就完成了。侧边栏中会出现“协调者”入口，协调者工具即可使用。插件不添加任何智能体预设：执行器和协调者都使用你的 Standard 预设。
 
 要安装新版本，请先移除插件（见[卸载](#卸载)一节），再添加新版本。协调者、执行器和插件状态都会保留。
 
-自动审查来自 dsh 随附的可选 bundle `@deepseek-ai/dsh-experimental-auto-review`。dsh 没有 bundle 依赖字段，所以本插件的 bundle 层会自行插入该 bundle 唯一的 `auto-review` 行。相关代码属于 dsh 安装的一部分，不会下载任何内容。如果你同时在插件管理器中开启了该 bundle，两个层会插入同一行，dsh 只挂载一次。即使它已通过本插件生效，插件管理器仍可能显示该 bundle 处于关闭状态。
+自动审查来自 dsh 自带的可选插件“自动授权审查”（`@deepseek-ai/dsh-experimental-auto-review`）。如需使用，请在“插件”中开启它，不会下载任何内容。未开启时，执行器以“询问我”（`workspace-write`）方式运行，“协调者”页面会说明原因。本插件 0.1.0 版会自行开启该插件的组件；0.1.1 版交由你决定，因为当你同时开启了“自动授权审查”时，dsh 的应用内卸载会拒绝移除 Whalepod。
 
 ## 快速上手
 
@@ -140,18 +140,11 @@ dsh plugin --profile desktop add github:simveit/dsh-whalepod
 
 你通过“始终允许”放行的文件夹列在“协调者”页面的“允许的文件夹”下，可以在那里移除。它们不属于配置。协调者的名字和执行器提示词也在“协调者”页面上设置，不在配置中。
 
-如果要在没有自动审查的情况下运行，请禁用它的行：
-
-```yaml
-- id: auto-review
-  disabled: true
-```
-
-这样执行器会以“询问我”（`workspace-write`）方式运行，在文件夹外操作前会询问你；“协调者”页面的开关会显示“询问我”并说明原因。宿主日志会在启动时提示这一点（`auto permission preset NOT available`）。插件绝不会选择更宽松的预设。
+如果要在没有自动审查的情况下运行，请在“插件”中保持“自动授权审查”关闭（或将其关闭）。这样执行器会以“询问我”（`workspace-write`）方式运行，在文件夹外操作前会询问你；“协调者”页面的开关会显示“询问我”并说明原因。宿主日志会在启动时提示这一点（`auto permission preset NOT available`）。插件绝不会选择更宽松的预设。
 
 ## 安全
 
-执行器 Session 默认以 dsh 的“自动审查”方式运行：自动审查会检查每个操作，把有风险的操作交给你审批，此模式下没有文件沙箱。“协调者”页面上有一个“执行器 Session 运行方式：自动审查 | 询问我”的开关；选择“询问我”后，新的执行器会使用 dsh 的 `workspace-write` 预设（界面中称为“工作区内修改”）：Lead 只能在执行器自己的文件夹内写入，其他操作都会先询问你；它的队友在同一个文件夹沙箱中工作。在两种方式下队友都不会询问你：需要你审批的操作（例如“询问我”方式下文件夹之外的操作）对它们一律拒绝。这个开关对所有协调者生效。
+在“插件”中开启“自动授权审查”后，执行器 Session 默认以 dsh 的“自动审查”方式运行：自动审查会检查每个操作，把有风险的操作交给你审批，此模式下没有文件沙箱。未开启时，它们以“询问我”方式运行。“协调者”页面上有一个“执行器 Session 运行方式：自动审查 | 询问我”的开关；选择“询问我”后，新的执行器会使用 dsh 的 `workspace-write` 预设（界面中称为“工作区内修改”）：Lead 只能在执行器自己的文件夹内写入，其他操作都会先询问你；它的队友在同一个文件夹沙箱中工作。在两种方式下队友都不会询问你：需要你审批的操作（例如“询问我”方式下文件夹之外的操作）对它们一律拒绝。这个开关对所有协调者生效。
 
 协调者可以使用 `executor_start`、`executor_message`、`executor_list`、`executor_read`、`executor_flag_user`、`executor_stop` 和 `executor_archive`，以及读取和搜索文件、向你提问和维护待办列表的工具；它没有 shell、写入、网络或浏览器工具，宿主端会拒绝它调用允许列表之外的任何工具。每个协调者只能看到和控制自己启动的执行器。Lead 拥有用户 Standard 预设中的全部工具（插件管理器除外），另外还有 `coordinator_report`、`executor_peers` 和 `executor_send`。这些工具用参数 `executor` 指定目标，用参数 `assignment` 传递派工内容。
 
@@ -160,6 +153,8 @@ dsh plugin --profile desktop add github:simveit/dsh-whalepod
 [docs/security.md](docs/security.md) 介绍威胁模型、哪些由宿主端强制执行、哪些依赖提示词，以及已知的限制。报告安全漏洞的方式见 [SECURITY.md](SECURITY.md)。
 
 ## 从早期版本升级
+
+**从 0.1.0 升级到 0.1.1。** 如果在“插件”中开启了“自动授权审查”，dsh 会拒绝在应用内卸载或更新 Whalepod 0.1.0（“其他配置仍在使用这个组合包的组件”）。你可以先关闭“自动授权审查”，更新或卸载 Whalepod，再重新开启它；也可以在退出应用后运行 `dsh plugin --profile desktop remove dsh-whalepod`，再添加新版本（见[安装](#安装)）。如果你之前使用自动审查但没有自己开启“自动授权审查”，请在更新后开启它；在此之前执行器以“询问我”方式运行，上次以自动审查运行的执行器会等到它重新可用。协调者、执行器、插件状态和设置都会保留。
 
 **从包 `dsh-coordinator` 升级。** 本插件改名为 Whalepod（包名 `dsh-whalepod`）之前叫 `dsh-coordinator`。dsh 按包名安装插件，所以请在退出应用（或停止 `dsh web`）后移除旧包并添加新包：
 
@@ -191,7 +186,7 @@ dsh plugin --profile desktop add dsh-whalepod                # 或 github:simvei
 dsh plugin --profile desktop remove dsh-whalepod   # 或：--profile web
 ```
 
-这会移除软件包及其层，包括它添加的 `auto-review` 行。只有在单独开启 auto-review bundle 时，自动审查才会继续可用。插件卸载时，会先把它的执行器切换到 `workspace-write`，因为 dsh 的 auto-review bundle 在被移除时会把 `auto` 会话切换为完全权限。
+这会移除软件包及其层。“自动授权审查”不受影响，保持你设置的开启或关闭状态。插件卸载时，会先把它的执行器切换到 `workspace-write`，因为 dsh 的自动审查插件在被移除时会把 `auto` 会话切换为完全权限。
 
 协调者对话和执行器 Session 会保留，并作为普通的 Standard 会话继续工作，只是不再有协调者的角色提示词和工具。原来的协调者对话会重新拥有 shell 和写入工具，而它读过的执行器输出仍留在历史记录中；在协调者分组中新建的会话也会保持为普通会话。如果某个执行器的会话上次以 `auto` 运行，并且在移除插件时没有加载，那么只有在启用自动审查时才能打开它。执行器的文件夹及其侧边栏分组、协调者的侧边栏工作区和文件夹，以及插件状态（`state.json`，升级后还有 `state.v1.json`）都会保留。如果也想删除状态，请在应用或 `dsh web` 停止后运行（状态文件夹沿用本插件之前的名字）：
 
@@ -222,7 +217,7 @@ pnpm pack            # 先构建，再写出 dsh-whalepod-<version>.tgz
 要在应用中试用你自己的构建，安装打包出的文件（安装到桌面版配置时请先退出应用）：
 
 ```sh
-dsh plugin --profile desktop add ./dsh-whalepod-0.1.0.tgz   # 或：--profile web
+dsh plugin --profile desktop add ./dsh-whalepod-0.1.1.tgz   # 或：--profile web
 ```
 
 tsdown 使用 rolldown 的 WebAssembly 绑定，因为应用内置的 Node 会拒绝其他厂商的原生插件。`pnpm-workspace.yaml` 因此添加了 `wasm32`。

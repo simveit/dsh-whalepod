@@ -12,7 +12,7 @@ Whalepod (package `dsh-whalepod`) is a plugin for the DeepSeek Harness (dsh). It
 
 Executor Sessions run autonomously with Agent Teams on, each in its own folder and in its own sidebar group next to its coordinator. Executor Sessions of the same coordinator can message each other when they share a task; Executor Sessions of different coordinators cannot. The Lead of an Executor Session may split its task across an agent team. The executor shows as running while any Teammate works, and the coordinator hears once, when the whole team is done.
 
-Executor Sessions run in dsh's Auto review by default, which has no file sandbox; the Coordinator page switches new ones to Ask me. [Security](#security) explains both modes and the boundaries the plugin enforces.
+Executor Sessions run in dsh's Auto review by default when you have switched on dsh's Auto authorization review plugin; it has no file sandbox. Without it they run in Ask me, and the Coordinator page switches new ones to Ask me at any time. [Security](#security) explains both modes and the boundaries the plugin enforces.
 
 ## Screenshots
 
@@ -60,11 +60,11 @@ dsh plugin --profile desktop add dsh-whalepod
 dsh plugin --profile desktop add github:simveit/dsh-whalepod
 ```
 
-That is the whole install. The Coordinator entry appears in the sidebar, and the coordinator tools and Auto review are available. The plugin adds no agent preset: Executor Sessions and coordinators run on your Standard preset.
+That is the whole install. The Coordinator entry appears in the sidebar, and the coordinator tools are available. The plugin adds no agent preset: Executor Sessions and coordinators run on your Standard preset.
 
 To install a newer version, remove the plugin (see [Uninstall](#uninstall)) and add the newer version. Coordinators, Executor Sessions and the plugin state are kept.
 
-Auto review comes from the shipped optional bundle `@deepseek-ai/dsh-experimental-auto-review`. dsh has no bundle-dependency field, so this plugin's bundle layer inserts that bundle's single `auto-review` row itself. The code is part of the dsh installation; nothing is downloaded. If you also switch the bundle on in the plugin manager, both layers insert the same row and dsh mounts it once. The plugin manager may still show the bundle as off while it is active through this plugin.
+Auto review comes from dsh's own optional plugin "Auto authorization review" (`@deepseek-ai/dsh-experimental-auto-review`), which ships with dsh. To use it, switch it on under Plugins; nothing is downloaded. Without it, Executor Sessions run in Ask me (`workspace-write`), and the Coordinator page says why. Version 0.1.0 of this plugin switched that plugin's component on by itself; 0.1.1 leaves it to you, because dsh's in-app Uninstall refused to remove Whalepod while you also had Auto authorization review on.
 
 ## Quick start
 
@@ -140,18 +140,11 @@ The key names are unchanged from earlier releases, so existing patches keep work
 
 Folders you allow with "Always allow" are listed on the Coordinator page under "Allowed folders", where you can remove them. They are not part of the config. Coordinator names and Executor prompts are set on the Coordinator page, not in the config.
 
-To run without Auto review, disable its row:
-
-```yaml
-- id: auto-review
-  disabled: true
-```
-
-Executor Sessions then run in Ask me (`workspace-write`) and ask before acting outside their folder; the Coordinator page's control shows Ask me and says why. The host log says so at startup (`auto permission preset NOT available`). The plugin never picks a more permissive preset.
+To run without Auto review, leave Auto authorization review switched off under Plugins (or switch it off). Executor Sessions then run in Ask me (`workspace-write`) and ask before acting outside their folder; the Coordinator page's control shows Ask me and says why. The host log says so at startup (`auto permission preset NOT available`). The plugin never picks a more permissive preset.
 
 ## Security
 
-Executor Sessions run in dsh's Auto review by default: an automatic reviewer checks each action and sends risky ones to you, and there is no file sandbox in this mode. The Coordinator page has an "Executor Sessions run in: Auto review | Ask me" control; Ask me runs new executors under dsh's `workspace-write` preset: the Lead writes only in the executor's folder and asks you before anything else, and its Teammates work in the same folder sandbox. Teammates never ask you, in either mode: an action that would need your approval, such as anything outside the folder under Ask me, is refused for them. The control applies to every coordinator.
+Executor Sessions run in dsh's Auto review by default while Auto authorization review is switched on under Plugins: an automatic reviewer checks each action and sends risky ones to you, and there is no file sandbox in this mode. Without it, they run in Ask me. The Coordinator page has an "Executor Sessions run in: Auto review | Ask me" control; Ask me runs new executors under dsh's `workspace-write` preset: the Lead writes only in the executor's folder and asks you before anything else, and its Teammates work in the same folder sandbox. Teammates never ask you, in either mode: an action that would need your approval, such as anything outside the folder under Ask me, is refused for them. The control applies to every coordinator.
 
 The coordinator has `executor_start`, `executor_message`, `executor_list`, `executor_read`, `executor_flag_user`, `executor_stop` and `executor_archive`, plus tools to read and search files, ask you questions and keep a todo list; it has no shell, write, web or browser tools, and the host refuses any call outside its allow list. Each coordinator sees and controls only the Executor Sessions it started. Leads have the user's Standard tools (without the plugin manager) plus `coordinator_report`, `executor_peers` and `executor_send`. The tools take an `executor` parameter for the target and an `assignment` parameter for the first message.
 
@@ -160,6 +153,8 @@ Boundaries are enforced in the host. Executor output reaches the coordinator onl
 [docs/security.md](docs/security.md) has the threat model, what the host enforces and what rests on prompts, and the known limits. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Upgrading from an earlier release
+
+**From 0.1.0 to 0.1.1.** If Auto authorization review is switched on under Plugins, dsh refuses to uninstall or update Whalepod 0.1.0 in the app ("Other configuration still uses this bundle's components"). Either switch Auto authorization review off, update or uninstall Whalepod, and switch it on again; or, with the app quit, run `dsh plugin --profile desktop remove dsh-whalepod` and add the new version (see [Install](#install)). If you used Auto review without switching on Auto authorization review yourself, switch it on after the update; until then Executor Sessions run in Ask me, and those last run in Auto review wait until it is back. Coordinators, Executor Sessions, the plugin state and settings are kept.
 
 **From the package `dsh-coordinator`.** The plugin was called `dsh-coordinator` before it became Whalepod (package `dsh-whalepod`). dsh installs plugins by package name, so remove the old package and add the new one, with the app quit (or `dsh web` stopped):
 
@@ -191,7 +186,7 @@ In the app, open Plugins and choose Uninstall on Whalepod. From the command line
 dsh plugin --profile desktop remove dsh-whalepod   # or: --profile web
 ```
 
-This removes the package and its layer, including the `auto-review` row it added. Auto review stays available only if the auto-review bundle is switched on separately. When the plugin unloads, it first moves its Executor Sessions to `workspace-write`, because dsh's auto-review bundle switches `auto` sessions to full access when it goes away.
+This removes the package and its layer. Auto authorization review is not touched: it stays on or off as you set it. When the plugin unloads, it first moves its Executor Sessions to `workspace-write`, because dsh's auto-review plugin switches `auto` sessions to full access when it goes away.
 
 The coordinator chats and the Executor Sessions stay and keep working as ordinary Standard sessions, without the coordinator's role prompt and tools. A former coordinator chat then has shell and write tools again, with the executor output it read still in its history, and new sessions in a coordinator's group stay ordinary sessions. An Executor Session whose session last ran in `auto` and was not loaded when the plugin was removed opens only while Auto review is enabled. Executor folders and their sidebar groups, the coordinators' sidebar Workspaces and folders, and the plugin state (`state.json`, and `state.v1.json` after an upgrade) are kept. To delete the state as well, with the app or `dsh web` stopped (the state folder keeps the plugin's earlier name):
 
@@ -222,7 +217,7 @@ pnpm pack            # runs the build, writes dsh-whalepod-<version>.tgz
 To try your own build in the app, install the packed file (quit the app first for the desktop profile):
 
 ```sh
-dsh plugin --profile desktop add ./dsh-whalepod-0.1.0.tgz   # or: --profile web
+dsh plugin --profile desktop add ./dsh-whalepod-0.1.1.tgz   # or: --profile web
 ```
 
 tsdown runs on rolldown's WebAssembly binding because the app's Node refuses native addons from other vendors. `pnpm-workspace.yaml` adds `wasm32` for that reason.

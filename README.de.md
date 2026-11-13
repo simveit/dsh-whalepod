@@ -14,7 +14,7 @@ Die Oberfläche des Plugins gibt es auf Englisch und Chinesisch. Deshalb nennt d
 
 Executor Sessions arbeiten selbstständig mit eingeschalteten Agent Teams, jede in ihrem eigenen Ordner und in ihrer eigenen Seitenleisten-Gruppe neben ihrem Coordinator. Executor Sessions desselben Coordinators können einander Nachrichten schicken, wenn sie an einer gemeinsamen Aufgabe arbeiten; Executor Sessions verschiedener Coordinators können das nicht. Der Lead einer Executor Session darf seine Aufgabe auf ein Agent-Team verteilen. Die Executor Session gilt als laufend, solange ein Teammate arbeitet, und der Coordinator erfährt es einmal, wenn das ganze Team fertig ist.
 
-Executor Sessions laufen standardmäßig im Auto review von dsh, der keine Datei-Sandbox hat; die Coordinator-Seite stellt neue auf Ask me um. [Sicherheit](#sicherheit) erklärt beide Modi und die Grenzen, die das Plugin durchsetzt.
+Executor Sessions laufen standardmäßig im Auto review von dsh, wenn du das dsh-Plugin "Auto authorization review" eingeschaltet hast; es hat keine Datei-Sandbox. Ohne es laufen sie in Ask me, und die Coordinator-Seite stellt neue jederzeit auf Ask me um. [Sicherheit](#sicherheit) erklärt beide Modi und die Grenzen, die das Plugin durchsetzt.
 
 ## Screenshots
 
@@ -62,11 +62,11 @@ dsh plugin --profile desktop add dsh-whalepod
 dsh plugin --profile desktop add github:simveit/dsh-whalepod
 ```
 
-Das ist die ganze Installation. Der Eintrag "Coordinator" erscheint in der Seitenleiste, und die Coordinator-Werkzeuge sowie Auto review sind verfügbar. Das Plugin fügt kein Agent-Preset hinzu: Executor Sessions und Coordinators laufen auf deinem Standard-Preset.
+Das ist die ganze Installation. Der Eintrag "Coordinator" erscheint in der Seitenleiste, und die Coordinator-Werkzeuge sind verfügbar. Das Plugin fügt kein Agent-Preset hinzu: Executor Sessions und Coordinators laufen auf deinem Standard-Preset.
 
 Eine neuere Version installierst du, indem du das Plugin entfernst (siehe [Deinstallation](#deinstallation)) und die neue Version hinzufügst. Coordinators, Executor Sessions und der Plugin-Zustand bleiben erhalten.
 
-Auto review kommt aus dem mitgelieferten optionalen Bundle `@deepseek-ai/dsh-experimental-auto-review`. dsh hat kein Feld für Bundle-Abhängigkeiten, deshalb fügt die Bundle-Ebene dieses Plugins die einzige `auto-review`-Zeile dieses Bundles selbst ein. Der Code ist Teil der dsh-Installation; heruntergeladen wird nichts. Schaltest du das Bundle zusätzlich im Plugin-Manager ein, fügen beide Ebenen dieselbe Zeile ein, und dsh lädt sie einmal. Der Plugin-Manager kann das Bundle weiterhin als ausgeschaltet anzeigen, obwohl es über dieses Plugin aktiv ist.
+Auto review kommt aus dem optionalen dsh-Plugin "Auto authorization review" (`@deepseek-ai/dsh-experimental-auto-review`), das mit dsh ausgeliefert wird. Um es zu nutzen, schalte es unter Plugins ein; heruntergeladen wird nichts. Ohne es laufen Executor Sessions in Ask me (`workspace-write`), und die Coordinator-Seite nennt den Grund. Version 0.1.0 dieses Plugins hat dessen Komponente selbst eingeschaltet; 0.1.1 überlässt das dir, weil die Deinstallation in der App Whalepod nicht entfernen konnte, solange Auto authorization review ebenfalls eingeschaltet war.
 
 ## Schnellstart
 
@@ -142,18 +142,11 @@ Die Schlüsselnamen sind dieselben wie in früheren Versionen, bestehende Patche
 
 Ordner, die du mit "Always allow" freigibst, stehen auf der Coordinator-Seite unter "Allowed folders", wo du sie wieder entfernen kannst. Sie sind nicht Teil der Konfiguration. Namen und Executor prompts der Coordinators stellst du ebenfalls auf der Coordinator-Seite ein, nicht in der Konfiguration.
 
-Um ohne Auto review zu arbeiten, deaktiviere dessen Zeile:
-
-```yaml
-- id: auto-review
-  disabled: true
-```
-
-Executor Sessions laufen dann in Ask me (`workspace-write`) und fragen, bevor sie außerhalb ihres Ordners handeln; der Schalter auf der Coordinator-Seite zeigt Ask me und nennt den Grund. Das Host-Log meldet das beim Start (`auto permission preset NOT available`). Das Plugin wählt nie ein großzügigeres Preset.
+Um ohne Auto review zu arbeiten, lass Auto authorization review unter Plugins ausgeschaltet (oder schalte es aus). Executor Sessions laufen dann in Ask me (`workspace-write`) und fragen, bevor sie außerhalb ihres Ordners handeln; der Schalter auf der Coordinator-Seite zeigt Ask me und nennt den Grund. Das Host-Log meldet das beim Start (`auto permission preset NOT available`). Das Plugin wählt nie ein großzügigeres Preset.
 
 ## Sicherheit
 
-Executor Sessions laufen standardmäßig im Auto review von dsh: Ein automatischer Prüfer kontrolliert jede Aktion und schickt riskante an dich, und in diesem Modus gibt es keine Datei-Sandbox. Die Coordinator-Seite hat einen Schalter "Executor Sessions run in: Auto review | Ask me". Mit Ask me laufen neue Executor Sessions unter dem dsh-Preset `workspace-write`: Der Lead schreibt nur im Ordner der Executor Session und fragt dich vor allem anderen; seine Teammates arbeiten in derselben Ordner-Sandbox. Teammates fragen dich in keinem der beiden Modi: Eine Aktion, die deine Freigabe bräuchte, etwa alles außerhalb des Ordners unter Ask me, wird ihnen verweigert. Der Schalter gilt für alle Coordinators.
+Executor Sessions laufen standardmäßig im Auto review von dsh, solange Auto authorization review unter Plugins eingeschaltet ist: Ein automatischer Prüfer kontrolliert jede Aktion und schickt riskante an dich, und in diesem Modus gibt es keine Datei-Sandbox. Ohne es laufen sie in Ask me. Die Coordinator-Seite hat einen Schalter "Executor Sessions run in: Auto review | Ask me". Mit Ask me laufen neue Executor Sessions unter dem dsh-Preset `workspace-write`: Der Lead schreibt nur im Ordner der Executor Session und fragt dich vor allem anderen; seine Teammates arbeiten in derselben Ordner-Sandbox. Teammates fragen dich in keinem der beiden Modi: Eine Aktion, die deine Freigabe bräuchte, etwa alles außerhalb des Ordners unter Ask me, wird ihnen verweigert. Der Schalter gilt für alle Coordinators.
 
 Der Coordinator hat `executor_start`, `executor_message`, `executor_list`, `executor_read`, `executor_flag_user`, `executor_stop` und `executor_archive`, dazu Werkzeuge, um Dateien zu lesen und zu durchsuchen, dir Fragen zu stellen und eine Aufgabenliste zu führen; Shell-, Schreib-, Web- oder Browser-Werkzeuge hat er nicht, und der Host lehnt jeden Aufruf außerhalb seiner Erlaubnisliste ab. Jeder Coordinator sieht und steuert nur die Executor Sessions, die er selbst gestartet hat. Leads haben die Standard-Werkzeuge des Nutzers (ohne den Plugin-Manager) sowie `coordinator_report`, `executor_peers` und `executor_send`. Die Werkzeuge nehmen das Ziel im Parameter `executor` und die erste Nachricht im Parameter `assignment`.
 
@@ -162,6 +155,8 @@ Die Grenzen setzt der Host-Code durch. Ausgaben einer Executor Session erreichen
 [docs/security.md](docs/security.md) beschreibt das Bedrohungsmodell, was der Host durchsetzt und was auf Prompts beruht, sowie die bekannten Grenzen. Wie du eine Schwachstelle meldest, steht in [SECURITY.md](SECURITY.md).
 
 ## Aktualisierung von einer früheren Version
+
+**Von 0.1.0 auf 0.1.1.** Ist Auto authorization review unter Plugins eingeschaltet, verweigert dsh in der App das Deinstallieren oder Aktualisieren von Whalepod 0.1.0 ("Other configuration still uses this bundle's components"). Schalte entweder Auto authorization review aus, aktualisiere oder deinstalliere Whalepod und schalte es wieder ein; oder führe bei beendeter App `dsh plugin --profile desktop remove dsh-whalepod` aus und füge die neue Version hinzu (siehe [Installation](#installation)). Hast du Auto review genutzt, ohne Auto authorization review selbst einzuschalten, schalte es nach dem Update ein; bis dahin laufen Executor Sessions in Ask me, und die zuletzt in Auto review gelaufenen warten, bis es wieder da ist. Coordinators, Executor Sessions, der Plugin-Zustand und die Einstellungen bleiben erhalten.
 
 **Vom Paket `dsh-coordinator`.** Das Plugin hieß `dsh-coordinator`, bevor es zu Whalepod (Paket `dsh-whalepod`) wurde. dsh installiert Plugins nach Paketnamen, also entferne das alte Paket und füge das neue hinzu, bei beendeter App (oder gestopptem `dsh web`):
 
@@ -193,7 +188,7 @@ In der App öffnest du Plugins und wählst bei Whalepod "Deinstallieren". Auf de
 dsh plugin --profile desktop remove dsh-whalepod   # oder: --profile web
 ```
 
-Das entfernt das Paket und seine Ebene, einschließlich der hinzugefügten `auto-review`-Zeile. Auto review bleibt nur verfügbar, wenn das Auto-review-Bundle separat eingeschaltet ist. Beim Entladen stellt das Plugin seine Executor Sessions zuerst auf `workspace-write` um, denn das Auto-review-Bundle von dsh schaltet `auto`-Sessions auf vollen Zugriff, wenn es verschwindet.
+Das entfernt das Paket und seine Ebene. Auto authorization review bleibt unberührt, ein- oder ausgeschaltet, wie du es eingestellt hast. Beim Entladen stellt das Plugin seine Executor Sessions zuerst auf `workspace-write` um, denn das Auto-review-Plugin von dsh schaltet `auto`-Sessions auf vollen Zugriff, wenn es verschwindet.
 
 Die Coordinator-Chats und die Executor Sessions bleiben erhalten und funktionieren als gewöhnliche Standard-Sessions weiter, nur ohne die Rollenanweisung und die Werkzeuge des Coordinators. Ein ehemaliger Coordinator-Chat hat dann wieder Shell- und Schreibwerkzeuge, mit den Ausgaben der Executor Sessions, die er gelesen hat, noch im Verlauf, und neue Sessions in der Gruppe eines Coordinators bleiben gewöhnliche Sessions. Eine Executor Session, deren Session zuletzt in `auto` lief und beim Entfernen des Plugins nicht geladen war, lässt sich nur öffnen, solange Auto review eingeschaltet ist. Die Ordner der Executor Sessions und ihre Seitenleisten-Gruppen, die Seitenleisten-Workspaces und Ordner der Coordinators sowie der Plugin-Zustand (`state.json`, nach einer Aktualisierung auch `state.v1.json`) bleiben erhalten. Um auch den Zustand zu löschen, bei beendeter App bzw. beendetem `dsh web` (der Zustandsordner behält den früheren Namen des Plugins):
 
@@ -224,7 +219,7 @@ pnpm pack            # baut und schreibt dsh-whalepod-<version>.tgz
 Um deinen eigenen Build in der App auszuprobieren, installiere die gepackte Datei (beim Desktop-Profil die App vorher beenden):
 
 ```sh
-dsh plugin --profile desktop add ./dsh-whalepod-0.1.0.tgz   # oder: --profile web
+dsh plugin --profile desktop add ./dsh-whalepod-0.1.1.tgz   # oder: --profile web
 ```
 
 tsdown läuft auf dem WebAssembly-Binding von rolldown, weil das Node der App native Addons anderer Hersteller ablehnt. `pnpm-workspace.yaml` fügt deshalb `wasm32` hinzu.

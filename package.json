@@ -1,6 +1,6 @@
 {
   "name": "dsh-whalepod",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Whalepod: Coordinator chats for the DeepSeek Harness (dsh) that hand work to independent Executor Sessions, follow them and report the results.",
   "keywords": [
     "dsh",

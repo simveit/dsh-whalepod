@@ -2,6 +2,21 @@
 
 All notable changes to this plugin are listed here. Versions follow [Semantic Versioning](https://semver.org/). The DeepSeek Harness versions a release runs on are in `engines.dsh` in `package.json`.
 
+## 0.1.1 - 2026-11-13
+
+### Fixed
+
+- Uninstall on the plugin's page under Plugins failed with "Other configuration still uses this bundle's components; switch them off first." whenever Auto authorization review was also switched on, and the failed attempt left Whalepod switched off. The same blocked an update in the app. The plugin no longer switches on the component of dsh's Auto authorization review plugin by itself, so the in-app Uninstall and update work in every setup.
+
+### Changed
+
+- Auto review is now your own switch: turn on Auto authorization review under Plugins to use it. Without it, Executor Sessions run in Ask me (`workspace-write`), and the Coordinator page says how to switch Auto review on. Nothing runs looser than before.
+
+### Upgrading from 0.1.0
+
+- If Auto authorization review is on, switch it off before updating or uninstalling Whalepod 0.1.0 in the app, then switch it on again; or use `dsh plugin --profile desktop remove dsh-whalepod` with the app quit, then add 0.1.1.
+- If you used Auto review without switching on Auto authorization review yourself, switch it on after the update. Until then Executor Sessions run in Ask me, and those that last ran in Auto review wait until it is back.
+
 ## 0.1.0 - 2026-11-13
 
 First public release of Whalepod (package `dsh-whalepod`), for DeepSeek Harness 0.2.2-rc.2 and later 0.2.x releases.

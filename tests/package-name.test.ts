@@ -35,3 +35,9 @@ test('ids that installed data depends on keep dsh-coordinator', () => {
   assert.match(read('src/host/authority.ts'), /'dsh-coordinator:role:', 'dsh-coordinator:opening:'/)
   assert.match(read('src/host/history.ts'), /'dsh-coordinator:brief:'/)
 })
+
+test('the bundle layer inserts only its own row, never the auto-review row (in-app Uninstall, decision 64)', () => {
+  const rows = read('cordis.patch.yml').split('\n').filter(line => /^\s+- id: /.test(line)).map(line => line.trim())
+  assert.deepEqual(rows, ['- id: dsh-coordinator'])
+  assert.doesNotMatch(read('cordis.patch.yml'), /^\s+name: '?@deepseek-ai\/dsh-experimental-auto-review/m)
+})
