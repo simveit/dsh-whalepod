@@ -37,25 +37,25 @@ Executor Sessions run in dsh's Auto review by default, which has no file sandbox
 ## Requirements
 
 - DeepSeek Harness 0.2.2-rc.2 or a later 0.2.x release (`engines.dsh`).
-- Git, for the two `github:` install forms below. The release form needs nothing else.
+- Git only for the `github:` install form below; the package name needs nothing else.
 - The package ships prebuilt code and has no runtime dependencies. `@deepseek-ai/cordis` and `@deepseek-ai/dsh-typert-protocol` are peers that the running dsh supplies; pnpm's peer warning during install is expected.
 
 ## Install
 
-None of the forms below builds anything on your machine; the package contains the built code.
+Whalepod is published on npm as `dsh-whalepod`. None of the forms below builds anything on your machine; the package contains the built code.
 
-**In the app.** Open Plugins, choose Add plugin, paste `github:simveit/dsh-whalepod` into "Package name or address" and press Install. When the install is done, choose Enable now. If the dialog says to restart DSH, quit the app and start it again.
+**In the app.** Open Plugins, choose Add plugin, type `dsh-whalepod` into "Package name or address" and press Install. The Registry dropdown can stay at the official npm registry. When the install is done, choose Enable now. If the dialog says to restart DSH, quit the app and start it again.
 
 **From the command line.** Quit the app first when installing into the desktop profile, and start it again afterwards. The desktop profile must exist, so open the desktop app once before the first install. For `dsh web`, use `--profile web` and restart `dsh web`.
 
 ```sh
-dsh plugin --profile desktop add github:simveit/dsh-whalepod
+dsh plugin --profile desktop add dsh-whalepod
 ```
 
-**From a release, without Git.** Once a release is published, its tarball works in both places, the Add plugin dialog and the command line:
+**The latest code from GitHub.** To install the current state of the repository instead of the published package, use `github:simveit/dsh-whalepod` in either place. This needs Git:
 
 ```sh
-dsh plugin --profile desktop add https://github.com/simveit/dsh-whalepod/releases/download/v0.1.0/dsh-whalepod-0.1.0.tgz
+dsh plugin --profile desktop add github:simveit/dsh-whalepod
 ```
 
 That is the whole install. The Coordinator entry appears in the sidebar, and the coordinator tools and Auto review are available. The plugin adds no agent preset: Executor Sessions and coordinators run on your Standard preset.
@@ -163,7 +163,7 @@ Boundaries are enforced in the host. Executor output reaches the coordinator onl
 
 ```sh
 dsh plugin --profile desktop remove dsh-coordinator          # or: --profile web
-dsh plugin --profile desktop add github:simveit/dsh-whalepod # or the release .tgz, see Install
+dsh plugin --profile desktop add dsh-whalepod                # or github:simveit/dsh-whalepod, see Install
 ```
 
 Coordinators, Executor Sessions and the plugin state are kept: the plugin's id, its state folder (`$DSH_HOME/storages/dsh-coordinator/`) and the marks in session logs keep the old name. Settings you set on the Plugins page are kept too, but dsh skips a settings row whose `name` names the old package. If the profile's `cordis.patch.yml` has a row with `id: dsh-coordinator` and `name: dsh-coordinator`, change that line to `name: dsh-whalepod` (or delete it) before the next start. A row with only `id: dsh-coordinator` needs no change.

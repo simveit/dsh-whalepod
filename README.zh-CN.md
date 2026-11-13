@@ -37,25 +37,25 @@ Whalepod（包名 `dsh-whalepod`）是 DeepSeek Harness（dsh）的一个插件�
 ## 系统要求
 
 - DeepSeek Harness 0.2.2-rc.2 或更高的 0.2.x 版本（`engines.dsh`）。
-- Git，用于下面两种 `github:` 安装方式。从发布版安装不需要其他东西。
+- 只有下面的 `github:` 安装方式需要 Git；按包名安装不需要其他东西。
 - 软件包内含预构建代码，没有运行时依赖。`@deepseek-ai/cordis` 和 `@deepseek-ai/dsh-typert-protocol` 是由运行中的 dsh 提供的 peer 依赖；安装时 pnpm 的 peer 警告属于正常现象。
 
 ## 安装
 
-下面任何一种方式都不会在你的电脑上构建任何东西：包里已经带有构建好的代码。
+Whalepod 以 `dsh-whalepod` 发布在 npm 上。下面任何一种方式都不会在你的电脑上构建任何东西：包里已经带有构建好的代码。
 
-**在应用中安装。** 打开“插件”，选择“添加插件”，把 `github:simveit/dsh-whalepod` 粘贴到“包名或地址”中，然后点击“安装”。安装完成后选择“立即启用”。如果对话框提示需要重启 DSH，请退出应用再重新打开。
+**在应用中安装。** 打开“插件”，选择“添加插件”，在“包名或地址”中输入 `dsh-whalepod`，然后点击“安装”。“Registry”下拉框保持官方 npm registry 即可。安装完成后选择“立即启用”。如果对话框提示需要重启 DSH，请退出应用再重新打开。
 
 **通过命令行安装。** 安装到桌面版配置时，请先退出应用，安装完成后再重新打开。桌面版配置必须已经存在，因此首次安装前请先打开一次桌面应用。对于 `dsh web`，请使用 `--profile web`，然后重启 `dsh web`。
 
 ```sh
-dsh plugin --profile desktop add github:simveit/dsh-whalepod
+dsh plugin --profile desktop add dsh-whalepod
 ```
 
-**从发布版安装，不需要 Git。** 发布版上线后，它的 tarball 在两个地方都可以使用：“添加插件”对话框和命令行：
+**安装 GitHub 上的最新代码。** 如果想安装仓库的当前代码而不是已发布的包，可以在上述两处使用 `github:simveit/dsh-whalepod`。这需要 Git：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/simveit/dsh-whalepod/releases/download/v0.1.0/dsh-whalepod-0.1.0.tgz
+dsh plugin --profile desktop add github:simveit/dsh-whalepod
 ```
 
 安装就完成了。侧边栏中会出现“协调者”入口，协调者工具和自动审查即可使用。插件不添加任何智能体预设：执行器和协调者都使用你的 Standard 预设。
@@ -163,7 +163,7 @@ dsh plugin --profile desktop add https://github.com/simveit/dsh-whalepod/release
 
 ```sh
 dsh plugin --profile desktop remove dsh-coordinator          # 或：--profile web
-dsh plugin --profile desktop add github:simveit/dsh-whalepod # 或发布版的 .tgz，见“安装”
+dsh plugin --profile desktop add dsh-whalepod                # 或 github:simveit/dsh-whalepod，见“安装”
 ```
 
 协调者、执行器和插件状态都会保留：插件的 id、状态文件夹（`$DSH_HOME/storages/dsh-coordinator/`）以及会话日志中的标记沿用旧名字。你在“插件”页面上做的设置也会保留，但 dsh 会跳过 `name` 写着旧包名的设置行。如果配置的 `cordis.patch.yml` 中有一行同时写着 `id: dsh-coordinator` 和 `name: dsh-coordinator`，请在下次启动前把这一行改成 `name: dsh-whalepod`（或删除它）。只有 `id: dsh-coordinator` 的行无需修改。

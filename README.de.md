@@ -39,25 +39,25 @@ Executor Sessions laufen standardmäßig im Auto review von dsh, der keine Datei
 ## Voraussetzungen
 
 - DeepSeek Harness 0.2.2-rc.2 oder eine spätere 0.2.x-Version (`engines.dsh`).
-- Git, für die beiden `github:`-Installationswege unten. Der Weg über ein Release braucht nichts weiter.
+- Git nur für den `github:`-Weg unten; der Paketname braucht nichts weiter.
 - Das Paket enthält vorgebauten Code und hat keine Laufzeitabhängigkeiten. `@deepseek-ai/cordis` und `@deepseek-ai/dsh-typert-protocol` sind Peer-Abhängigkeiten, die das laufende dsh mitbringt; die Peer-Warnung von pnpm bei der Installation ist zu erwarten.
 
 ## Installation
 
-Keiner der folgenden Wege baut etwas auf deinem Rechner; das Paket enthält den fertigen Code.
+Whalepod ist auf npm als `dsh-whalepod` veröffentlicht. Keiner der folgenden Wege baut etwas auf deinem Rechner; das Paket enthält den fertigen Code.
 
-**In der App.** Öffne Plugins, wähle "Plugin hinzufügen", füge `github:simveit/dsh-whalepod` in das Feld "Name oder Adresse des Pakets" ein und klicke auf "Installieren". Wenn die Installation fertig ist, wähle "Jetzt aktivieren". Sagt der Dialog, dass DSH neu gestartet werden muss, beende die App und starte sie wieder. (In einer anderen Sprache der App heißen die Schaltflächen entsprechend, auf Englisch etwa "Add plugin", "Install" und "Enable now".)
+**In der App.** Öffne Plugins, wähle "Plugin hinzufügen", tippe `dsh-whalepod` in das Feld "Name oder Adresse des Pakets" und klicke auf "Installieren". Das Auswahlfeld "Registry" kann auf der offiziellen npm-Registry bleiben. Wenn die Installation fertig ist, wähle "Jetzt aktivieren". Sagt der Dialog, dass DSH neu gestartet werden muss, beende die App und starte sie wieder. (In einer anderen Sprache der App heißen die Schaltflächen entsprechend, auf Englisch etwa "Add plugin", "Install" und "Enable now".)
 
 **Über die Kommandozeile.** Beende die App zuerst, wenn du in das Desktop-Profil installierst, und starte sie danach wieder. Das Desktop-Profil muss existieren, also öffne die Desktop-App vor der ersten Installation einmal. Für `dsh web` nimm `--profile web` und starte `dsh web` neu.
 
 ```sh
-dsh plugin --profile desktop add github:simveit/dsh-whalepod
+dsh plugin --profile desktop add dsh-whalepod
 ```
 
-**Aus einem Release, ohne Git.** Sobald ein Release veröffentlicht ist, funktioniert sein Tarball an beiden Stellen, im Dialog "Plugin hinzufügen" und auf der Kommandozeile:
+**Der neueste Code von GitHub.** Um den aktuellen Stand des Repositorys statt des veröffentlichten Pakets zu installieren, nimm an beiden Stellen `github:simveit/dsh-whalepod`. Dafür braucht es Git:
 
 ```sh
-dsh plugin --profile desktop add https://github.com/simveit/dsh-whalepod/releases/download/v0.1.0/dsh-whalepod-0.1.0.tgz
+dsh plugin --profile desktop add github:simveit/dsh-whalepod
 ```
 
 Das ist die ganze Installation. Der Eintrag "Coordinator" erscheint in der Seitenleiste, und die Coordinator-Werkzeuge sowie Auto review sind verfügbar. Das Plugin fügt kein Agent-Preset hinzu: Executor Sessions und Coordinators laufen auf deinem Standard-Preset.
@@ -165,7 +165,7 @@ Die Grenzen setzt der Host-Code durch. Ausgaben einer Executor Session erreichen
 
 ```sh
 dsh plugin --profile desktop remove dsh-coordinator          # oder: --profile web
-dsh plugin --profile desktop add github:simveit/dsh-whalepod # oder das Release-.tgz, siehe Installation
+dsh plugin --profile desktop add dsh-whalepod                # oder github:simveit/dsh-whalepod, siehe Installation
 ```
 
 Coordinators, Executor Sessions und der Plugin-Zustand bleiben erhalten: Die Plugin-ID, der Zustandsordner (`$DSH_HOME/storages/dsh-coordinator/`) und die Markierungen in den Session-Logs behalten den alten Namen. Einstellungen von der Plugins-Seite bleiben ebenfalls, aber dsh überspringt eine Einstellungszeile, deren `name` das alte Paket nennt. Enthält die `cordis.patch.yml` des Profils eine Zeile mit `id: dsh-coordinator` und `name: dsh-coordinator`, ändere diese Zeile vor dem nächsten Start in `name: dsh-whalepod` (oder lösche sie). Eine Zeile nur mit `id: dsh-coordinator` braucht keine Änderung.
