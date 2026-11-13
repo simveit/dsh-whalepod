@@ -8,7 +8,7 @@
 
 Whalepod (Paket `dsh-whalepod`) ist ein Plugin für den DeepSeek Harness (dsh). Es fügt Coordinators hinzu. Ein Coordinator ist die Haupt-Session, die Arbeit verteilt: Du beschreibst die Arbeit in seinem Chat, und sein Agent gibt jede Aufgabe an eine eigene Executor Session ab, verfolgt sie und meldet die Ergebnisse. Du kannst mehrere Coordinators nebeneinander betreiben, einen pro Vorhaben. Jeder Coordinator hat einen Namen, etwa "Noether" oder "李白".
 
-**Installation:** Öffne in DeepSeek Harness Plugins > "Plugin hinzufügen", gib `dsh-whalepod@0.1.0` ein und klicke auf "Installieren". Details unter [Installation](#installation).
+**Installation:** Öffne in DeepSeek Harness Plugins > "Plugin hinzufügen", gib `dsh-whalepod` ein und klicke auf "Installieren". Details unter [Installation](#installation).
 
 Die Oberfläche des Plugins gibt es auf Englisch und Chinesisch. Deshalb nennt diese Anleitung Begriffe und Beschriftungen so, wie sie in der englischen Oberfläche erscheinen (Coordinator, Executor Session, Assignment, Report, "New coordinator" und so weiter).
 
@@ -48,12 +48,12 @@ Executor Sessions laufen standardmäßig im Auto review von dsh, der keine Datei
 
 Whalepod ist auf npm als `dsh-whalepod` veröffentlicht. Keiner der folgenden Wege baut etwas auf deinem Rechner; das Paket enthält den fertigen Code.
 
-**In der App.** Öffne Plugins, wähle "Plugin hinzufügen", tippe `dsh-whalepod@0.1.0` in das Feld "Name oder Adresse des Pakets" und klicke auf "Installieren". Das Auswahlfeld "Registry" kann auf der offiziellen npm-Registry bleiben. Wenn die Installation fertig ist, wähle "Jetzt aktivieren". Sagt der Dialog, dass DSH neu gestartet werden muss, beende die App und starte sie wieder. (In einer anderen Sprache der App heißen die Schaltflächen entsprechend, auf Englisch etwa "Add plugin", "Install" und "Enable now".)
+**In der App.** Öffne Plugins, wähle "Plugin hinzufügen", tippe `dsh-whalepod` in das Feld "Name oder Adresse des Pakets" und klicke auf "Installieren". Das Auswahlfeld "Registry" kann auf der offiziellen npm-Registry bleiben. Wenn die Installation fertig ist, wähle "Jetzt aktivieren". Sagt der Dialog, dass DSH neu gestartet werden muss, beende die App und starte sie wieder. (In einer anderen Sprache der App heißen die Schaltflächen entsprechend, auf Englisch etwa "Add plugin", "Install" und "Enable now".)
 
 **Über die Kommandozeile.** Beende die App zuerst, wenn du in das Desktop-Profil installierst, und starte sie danach wieder. Das Desktop-Profil muss existieren, also öffne die Desktop-App vor der ersten Installation einmal. Für `dsh web` nimm `--profile web` und starte `dsh web` neu.
 
 ```sh
-dsh plugin --profile desktop add dsh-whalepod@0.1.0
+dsh plugin --profile desktop add dsh-whalepod
 ```
 
 **Der neueste Code von GitHub.** Um den aktuellen Stand des Repositorys statt des veröffentlichten Pakets zu installieren, nimm an beiden Stellen `github:simveit/dsh-whalepod`. Dafür braucht es Git:
@@ -167,7 +167,7 @@ Die Grenzen setzt der Host-Code durch. Ausgaben einer Executor Session erreichen
 
 ```sh
 dsh plugin --profile desktop remove dsh-coordinator          # oder: --profile web
-dsh plugin --profile desktop add dsh-whalepod@0.1.0                # oder github:simveit/dsh-whalepod, siehe Installation
+dsh plugin --profile desktop add dsh-whalepod                # oder github:simveit/dsh-whalepod, siehe Installation
 ```
 
 Coordinators, Executor Sessions und der Plugin-Zustand bleiben erhalten: Die Plugin-ID, der Zustandsordner (`$DSH_HOME/storages/dsh-coordinator/`) und die Markierungen in den Session-Logs behalten den alten Namen. Einstellungen von der Plugins-Seite bleiben ebenfalls, aber dsh überspringt eine Einstellungszeile, deren `name` das alte Paket nennt. Enthält die `cordis.patch.yml` des Profils eine Zeile mit `id: dsh-coordinator` und `name: dsh-coordinator`, ändere diese Zeile vor dem nächsten Start in `name: dsh-whalepod` (oder lösche sie). Eine Zeile nur mit `id: dsh-coordinator` braucht keine Änderung.
