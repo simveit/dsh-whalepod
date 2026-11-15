@@ -11,7 +11,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { principalOf, Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult,
-  DeleteCoordinatorRequest, DeleteCoordinatorResult, HostProblem, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, ThreadInfo, ThreadPermissionState,
+  DeleteCoordinatorRequest, DeleteCoordinatorResult, HostProblem, ListModelChoicesRequest, ModelChoices, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, SetModelRequest, ThreadInfo, ThreadPermissionState,
 } from './types.ts'
 import { HOST_INJECT, type HostContext } from './host/dsh.ts'
 import { type CoordinatorConfig } from './host/ids.ts'
@@ -219,6 +219,41 @@ export default class CoordinatorService extends TypertRemoteService {
     signal.throwIfAborted()
     requireOwner(this.ctx)
     return this.service().setExecutorPrompt(request ?? {})
+  }
+
+  /**
+   * The models the Coordinator page chooses from: dsh's providers with their models and reasoning efforts, and the
+   * coordinator's two model settings with what each resolves to now. Owner only.
+   */
+  @Remote
+  async listModelChoices(request: ListModelChoicesRequest, signal: AbortSignal): Promise<ModelChoices> {
+    signal.throwIfAborted()
+    requireOwner(this.ctx)
+    return this.service().modelChoices(request ?? {})
+  }
+
+  /**
+   * Set the model of a coordinator's chat; `null` clears the setting. The model must be one dsh offers. It is selected
+   * in the open chat and applies from its next model request. Only the owner may set it; no model tool can read or
+   * change it.
+   */
+  @Remote
+  async setCoordinatorModel(request: SetModelRequest, signal: AbortSignal): Promise<CoordinatorInfo> {
+    signal.throwIfAborted()
+    requireOwner(this.ctx)
+    return this.service().setCoordinatorModel(request ?? {})
+  }
+
+  /**
+   * Set the model new Executor Sessions of a coordinator start on; `null` means the same as the coordinator. The model
+   * must be one dsh offers. Applies to Executor Sessions started afterwards. Only the owner may set it; no model tool
+   * can read or change it.
+   */
+  @Remote
+  async setExecutorModel(request: SetModelRequest, signal: AbortSignal): Promise<CoordinatorInfo> {
+    signal.throwIfAborted()
+    requireOwner(this.ctx)
+    return this.service().setExecutorModel(request ?? {})
   }
 
   /**

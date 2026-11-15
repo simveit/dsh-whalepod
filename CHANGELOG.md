@@ -2,6 +2,21 @@
 
 All notable changes to this plugin are listed here. Versions follow [Semantic Versioning](https://semver.org/). The DeepSeek Harness versions a release runs on are in `engines.dsh` in `package.json`.
 
+## 0.4.0 - 2026-11-15
+
+### Added
+
+- You can choose a model per coordinator on the Coordinator page: one for the coordinator and a separate one for its Executor Sessions. Two rows under the folder, "Coordinator model" and "Executor model", list the models DeepSeek Harness offers, grouped by provider, with the reasoning effort next to the model as in the chat's message box. A change saves at once.
+- "Coordinator model" is the model the coordinator's chat runs on, from its next reply on. It is one setting with the model picker in the chat: a change in either place shows in both. A chat that is reopened starts on it.
+- "Executor model" is the model new Executor Sessions of that coordinator start on, and their Teammates with them. Its first choice, "Same as coordinator", is the default and what earlier releases did. It applies to Executor Sessions started from then on. Running ones keep their model, and a model you change by hand in an Executor Session's own chat stays in that session.
+- A model that is no longer available, for example after you signed out of its provider, stays selected with a note on the page. New Executor Sessions then start on the coordinator's model, or on the DeepSeek Harness default, and the coordinator is told when it starts one. The model is used again once it is available again.
+- When DeepSeek Harness cannot say whether the Executor model is available, because its provider's model list fails at that moment, no Executor Session is started on another model in its place: the coordinator is told to try again, and the page says that the model could not be checked.
+- The "Coordinator model" row says so when the chat runs on another model than the one shown, for example after you restored an archived chat in DeepSeek Harness instead of using Reopen. The page can tell only for a chat that is loaded.
+- Choosing a model on the page does not change the model your other sessions in DeepSeek Harness start on. Choosing one in a chat's model picker still does, because DeepSeek Harness saves that choice as its default.
+- Only you change the two settings. No tool of a coordinator or an Executor Session reads or sets them, and the host accepts only models and reasoning efforts that DeepSeek Harness lists, checked on every change on the page, on every change in the coordinator's chat, and again each time a setting is used for a new session.
+- Existing coordinators need nothing: without a setting they behave as before, and the state file keeps its format. For the same reason an earlier release still reads the file, and its first save drops the model settings without a notice. Keep a copy of `state.json` before you go back to one (README, Upgrading from an earlier release).
+- What was checked: the test suite on a fake host, and the dsh 0.2.2-rc.3 sources for the model APIs the feature uses. In the desktop app (dsh-desktop 0.2.2-rc.3) with a real model: the two rows list the models with their reasoning effort, a model set on the page showed in the coordinator's chat and ran there, a new Executor Session started on it, and the model that other new sessions start on did not change. A separate Executor model was run there only with the settings a new coordinator gets in 0.5.0: the Executor Session started on its own reasoning effort. Not run in the app: a change in the chat's model picker showing on the page, a model that is no longer available, and the list following a provider you set up or sign out of while the page is open.
+
 ## 0.3.0 - 2026-11-15
 
 ### Added

@@ -31,6 +31,8 @@ interface SlotsService {
 }
 interface ClientRemote {
   $mount(contribution: TypertRemoteContribution): Promise<() => Promise<void>>
+  /** Host events dsh forwards to the client (dsh's own model picker listens the same way). */
+  $on?(event: string, listener: () => void): unknown
   coordinator?: CoordinatorRemote
 }
 interface LocaleService {
@@ -163,6 +165,30 @@ export async function apply(ctx: ClientContext): Promise<void> {
         return undefined
       }
     }
+    // dsh's model picker copy (Effort, Default, the account provider's name), for the model rows.
+    const dshModel = (): Translate | undefined => {
+      try {
+        return ctx.locale.bind('model')
+      } catch {
+        return undefined
+      }
+    }
+    // When dsh's models may have changed: the events dsh's own model picker reloads its list on, where the client
+    // gets them, and the window coming back to the front (a provider set up in another window).
+    const modelListeners = new Set<() => void>()
+    const modelsChanged = () => { for (const listener of [...modelListeners]) listener() }
+    for (const event of ['llm/adapters-updated', 'llm/models-updated', 'settings/document-updated', 'credentials/record-updated', 'credentials/reference-updated']) {
+      try {
+        const off = uiCtx.remote.$on?.(event, modelsChanged)
+        if (typeof off === 'function') uiCtx.effect(() => off as () => void, `dsh-coordinator: ${event}`)
+      } catch {
+        // Without the event the list is loaded again when a coordinator is shown or its models change.
+      }
+    }
+    uiCtx.effect(() => {
+      window.addEventListener('focus', modelsChanged)
+      return () => { window.removeEventListener('focus', modelsChanged) }
+    }, 'dsh-coordinator: model list on focus')
     // Fake Session ids exist only in the fake source; opening them would fail.
     const openReal = async (sessionId: string) => {
       if (store.source.kind === 'fake' && sessionId.startsWith('fake-')) return
@@ -192,6 +218,10 @@ export async function apply(ctx: ClientContext): Promise<void> {
         return result
       },
       setCoordinatorMemoryEnabled: async (coordinatorId, enabled) => { await store.source.setCoordinatorMemoryEnabled(coordinatorId, enabled); store.refresh() },
+      listModelChoices: coordinatorId => store.source.listModelChoices(coordinatorId),
+      watchModels: (listener) => { modelListeners.add(listener); return () => { modelListeners.delete(listener) } },
+      setCoordinatorModel: async (coordinatorId, model) => { await store.source.setCoordinatorModel(coordinatorId, model); store.refresh() },
+      setExecutorModel: async (coordinatorId, model) => { await store.source.setExecutorModel(coordinatorId, model); store.refresh() },
       renameCoordinator: async (coordinatorId, name) => { await store.source.renameCoordinator(coordinatorId, name); store.refresh() },
       archiveCoordinator: async (coordinatorId, options) => {
         const result = await store.source.archiveCoordinator(coordinatorId, options)
@@ -235,7 +265,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
     })
 
     uiCtx.slots.inject('main', () => uiCtx.slots.register({
-      name: 'main', key: PANEL_ID, locale: NS, inject: () => ({ hooks, ...actions, dshPermission: dshPermission(), dshApproval: dshApproval() }),
+      name: 'main', key: PANEL_ID, locale: NS, inject: () => ({ hooks, ...actions, dshPermission: dshPermission(), dshApproval: dshApproval(), dshModel: dshModel() }),
     }, CoordinatorPanel as never))
     uiCtx.slots.inject('sidebar.panellist', () => uiCtx.slots.register({
       name: 'sidebar.panellist', id: PANEL_ID, order: 50, locale: NS, label: () => t('panel'), inject: () => ({ hooks }),

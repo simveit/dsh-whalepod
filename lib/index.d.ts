@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult, DeleteCoordinatorRequest, DeleteCoordinatorResult, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, ThreadPermissionState } from './types.ts';
+import type { ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult, DeleteCoordinatorRequest, DeleteCoordinatorResult, ListModelChoicesRequest, ModelChoices, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, SetModelRequest, ThreadPermissionState } from './types.ts';
 export type * from './types.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
@@ -37,6 +37,23 @@ export default class CoordinatorService extends TypertRemoteService {
      * gets. Empty text clears it. Only the owner may set it; no model tool can read or change it.
      */
     setExecutorPrompt(request: SetExecutorPromptRequest, signal: AbortSignal): Promise<CoordinatorInfo>;
+    /**
+     * The models the Coordinator page chooses from: dsh's providers with their models and reasoning efforts, and the
+     * coordinator's two model settings with what each resolves to now. Owner only.
+     */
+    listModelChoices(request: ListModelChoicesRequest, signal: AbortSignal): Promise<ModelChoices>;
+    /**
+     * Set the model of a coordinator's chat; `null` clears the setting. The model must be one dsh offers. It is selected
+     * in the open chat and applies from its next model request. Only the owner may set it; no model tool can read or
+     * change it.
+     */
+    setCoordinatorModel(request: SetModelRequest, signal: AbortSignal): Promise<CoordinatorInfo>;
+    /**
+     * Set the model new Executor Sessions of a coordinator start on; `null` means the same as the coordinator. The model
+     * must be one dsh offers. Applies to Executor Sessions started afterwards. Only the owner may set it; no model tool
+     * can read or change it.
+     */
+    setExecutorModel(request: SetModelRequest, signal: AbortSignal): Promise<CoordinatorInfo>;
     /**
      * Replace a coordinator's memory (one page of markdown notes, max 6000 characters); empty text clears it. The request
      * names the memory revision the text is based on; when the memory changed since, nothing is saved (`saved: false`)

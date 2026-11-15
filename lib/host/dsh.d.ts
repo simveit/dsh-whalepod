@@ -200,10 +200,24 @@ export interface Llm {
     /** Providers that are set up (credentials present). */
     listProviders(): readonly {
         readonly id: string;
+        readonly name?: string;
     }[];
     listModels(provider: string): Promise<readonly {
         readonly id: string;
+        readonly name?: string;
     }[]>;
+    /** One model's metadata: the reasoning efforts it offers and the one it uses when none is chosen. Throws for an unknown provider. */
+    resolveModelInfo?(provider: string, model: string): Promise<{
+        readonly reasoning?: {
+            readonly efforts: readonly {
+                readonly id: string;
+                readonly name?: string;
+            }[];
+            readonly defaultEffort?: string;
+        };
+    }>;
+    /** Checks a selection as dsh does before it records one: throws for an unknown provider and for an effort the model does not offer. */
+    resolveCallConfig?(config: ModelSelection): Promise<unknown>;
 }
 /** `ctx.agentDefaultModel`: the model a Session follows until one is selected in it. */
 export interface AgentDefaultModel {

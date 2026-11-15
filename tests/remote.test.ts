@@ -14,7 +14,8 @@ function fullState(): CoordinatorState {
     coordinators: [
       { id: 'c-2', sessionId: 's-c2', name: 'Noether', title: 'Release', executorPrompt: 'Write tests first.\nAsk before adding a dependency.', memory: '## Preferences\n- Short reports.', memoryRevision: 4,
         memoryBy: { by: 'executor', executorId: 't-1', executorTitle: 'a', at: 9 }, memoryOff: true, home: '/h/coordinator-2', folder: '/h/elsewhere', folderProblem: 'refused: inside ~/Library',
-        model: { ok: false, reason: 'model-unavailable', model: 'p/m' }, createdAt: 2, updatedAt: 3 },
+        model: { ok: false, reason: 'model-unavailable', model: 'p/m' },
+        coordinatorModel: { provider: 'p', model: 'm', reasoningEffort: 'high' }, executorModel: { provider: 'q', model: 'n' }, createdAt: 2, updatedAt: 3 },
       { id: 'c-1', sessionId: null, name: 'Feynman', title: 'Coordinator Feynman', home: '/h/dsh-threads', folder: '/h/dsh-threads', archived: true, chatArchived: true,
         model: { ok: true, model: 'p/m' }, createdAt: 1, updatedAt: 1 },
     ],
@@ -65,6 +66,9 @@ test('the client codec degrades unknown values instead of failing the poll', () 
   // A host that predates names sends none: '' makes the client fall back to the title.
   assert.equal(decoded.coordinators[0]!.name, '')
   assert.equal(decoded.coordinators[0]!.executorPrompt, undefined)
+  // A model setting that is no model by shape reads as not set instead of failing the poll.
+  const odd = getState.parse({ coordinators: [{ id: 'c', sessionId: 's', title: 'C', home: '/h', folder: '/h', coordinatorModel: 'p/m', executorModel: { provider: 'p' }, createdAt: 1, updatedAt: 1 }], revision: 1, threads: [] })
+  assert.deepEqual([odd.coordinators[0]!.coordinatorModel, odd.coordinators[0]!.executorModel], [undefined, undefined])
 })
 
 test('the client codec reads the startup validation flag and degrades a bad one', () => {

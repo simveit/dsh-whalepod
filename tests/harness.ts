@@ -15,6 +15,18 @@ export interface LogEvent { type: string; seq: number; time?: number; data: unkn
 
 let counter = 0
 
+export interface FakeModel { provider: string; model: string; reasoningEffort?: string }
+
+/** A provider of the fake `ctx.llm`: its models, each with the reasoning efforts it offers (`efforts[0]` is the default unless `noDefault`). */
+export interface FakeProvider {
+  id: string
+  name?: string
+  /** `listModels` of this provider throws. */
+  broken?: boolean
+  /** A model with `broken` is listed, but `resolveModelInfo` and `resolveCallConfig` throw for it. */
+  models: { id: string; name?: string; efforts?: string[]; noDefault?: boolean; broken?: boolean }[]
+}
+
 export class FakeAgent {
   readonly id: string
   status: 'idle' | 'running' = 'idle'
@@ -42,10 +54,21 @@ export class FakeAgent {
   readonly received: { how: 'followup' | 'steer' | 'inject' | 'prompt'; message: UserMessage; wake?: boolean }[] = []
   /** The injects of the current synchronous burst, while the agent is idle. */
   private burst: { how: 'followup' | 'steer' | 'inject' | 'prompt'; message: UserMessage; wake?: boolean }[] = []
-  selected: { provider: string; model: string } | undefined
+  /** The Session's recorded selection (dsh: the pending selection, else the one of its last request). */
+  selected: FakeModel | undefined
+  /** Every `model.select` call, in order. */
+  readonly selects: FakeModel[] = []
   readonly model = {
-    current: () => this.selected ?? { provider: 'p', model: 'm' },
-    select: (s: { provider: string; model: string }) => { this.selected = s },
+    // As dsh: the recorded selection, else the default the Session follows live.
+    current: () => this.selected ?? this.host.defaultModel ?? { provider: 'p', model: 'm' },
+    // As dsh's `AgentModel.select`: a selection that differs from the recorded one is logged as `model/selection`.
+    select: (s: FakeModel) => {
+      this.selects.push({ ...s })
+      const same = this.selected !== undefined && this.selected.provider === s.provider && this.selected.model === s.model && this.selected.reasoningEffort === s.reasoningEffort
+      if (same) return
+      this.selected = { provider: s.provider, model: s.model, ...(s.reasoningEffort === undefined ? {} : { reasoningEffort: s.reasoningEffort }) }
+      this.append('model/selection', { ...this.selected })
+    },
   }
   title = ''
   preset = 'default'
@@ -259,6 +282,12 @@ export class FakeHost {
   readonly ungrouped: string[] = []
   /** Every `sessionController.create` request, in order. */
   readonly createRequests: { workspaceId?: string; cwd?: string; agentPreset?: string }[] = []
+  /** The deployment default a Session without a selection follows (`ctx.agentDefaultModel`), once `useModels` set one. */
+  defaultModel: FakeModel | undefined
+  /** The providers of the fake `ctx.llm`; tests change the list to make a model appear or go away. */
+  providers: FakeProvider[] = []
+  /** Calls that would change dsh's global default: `sessionController.selectModel` and `agentDefaultModel.saveSelection`. */
+  readonly globalModelWrites: unknown[] = []
 
   readonly ctx: Record<string, unknown>
 
@@ -439,6 +468,9 @@ export class FakeHost {
           if (agent?.status === 'running') agent.endTurn('aborted')
           return { accepted: true }
         },
+        // dsh's composer route: it selects in the Session and also saves the selection as the global default. The
+        // plugin must never call it; the fake only records a call.
+        selectModel: async (request: unknown) => { host.globalModelWrites.push(request); return { selected: request } },
       },
       sessionQuery: {
         readSession: async (id: string) => {
@@ -469,6 +501,47 @@ export class FakeHost {
   }
 
   agentOf(id: string): FakeAgent { return this.agentsById.get(id)! }
+
+  /**
+   * Install dsh's model services: `ctx.llm` over `providers` (as dsh-llm: `listModels`, `resolveModelInfo` and
+   * `resolveCallConfig` throw for an unknown provider, and an effort the model does not offer is refused) and
+   * `ctx.agentDefaultModel` with `defaultModel`.
+   */
+  useModels(providers: FakeProvider[], defaultModel?: FakeModel): void {
+    const host = this
+    this.providers = providers
+    this.defaultModel = defaultModel
+    const provider = (id: string): FakeProvider => {
+      const found = host.providers.find(p => p.id === id)
+      if (found === undefined) throw new Error(`no adapter registered for provider "${id}" at https://provider.invalid/v1`)
+      return found
+    }
+    const info = (providerId: string, modelId: string) => {
+      const model = provider(providerId).models.find(m => m.id === modelId)
+      if (model === undefined) throw new Error(`unknown model "${modelId}"`)
+      if (model.broken === true) throw new Error(`details of ${modelId} failed at https://provider.invalid/v1/models/${modelId}`)
+      const efforts = (model.efforts ?? []).map(id => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1) }))
+      return { provider: providerId, id: modelId, name: model.name ?? modelId, ...(efforts.length === 0 ? {} : { reasoning: { efforts, ...(model.noDefault === true ? {} : { defaultEffort: efforts[0]!.id }) } }) }
+    }
+    this.services.set('llm', {
+      listProviders: () => host.providers.map(p => ({ id: p.id, name: p.name ?? p.id })),
+      listModels: async (id: string) => {
+        const found = provider(id)
+        if (found.broken === true) throw new Error(`catalog of ${id} failed at https://provider.invalid/v1/models`)
+        return found.models.map(m => ({ provider: id, id: m.id, name: m.name ?? m.id }))
+      },
+      resolveModelInfo: async (providerId: string, modelId: string) => info(providerId, modelId),
+      resolveCallConfig: async (config: FakeModel) => {
+        const resolved = info(config.provider, config.model)
+        if (config.reasoningEffort !== undefined && resolved.reasoning?.efforts.some(e => e.id === config.reasoningEffort) !== true) throw new Error('UNSUPPORTED_REASONING_EFFORT')
+        return config
+      },
+    })
+    this.services.set('agentDefaultModel', {
+      currentSelection: () => { if (host.defaultModel === undefined) throw new Error('no default model'); return { ...host.defaultModel } },
+      saveSelection: async (selection: unknown) => { host.globalModelWrites.push(selection) },
+    })
+  }
 
   /** dsh's membership rule (dsh-workspace attachSession): only a Session whose cwd is exactly the Workspace path. */
   async attach(ws: { path: string; sessionIds: string[] }, sessionId: string): Promise<void> {

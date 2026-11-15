@@ -2,16 +2,17 @@
  * Coordinator home (the sidebar's "Coordinator" page): heading with New coordinator, Choose folder and Type a path
  * (each opens the inline form of new-coordinator.tsx, where the user may name the coordinator before it is created),
  * the global "Executor Sessions run in" control, page-level notices, the coordinator list and the selected
- * coordinator's detail (name with rename, chat action, archive, folder and executor prompt settings, folder and model
+ * coordinator's detail (name with rename, chat action, archive, folder, model and executor prompt settings, folder and model
  * notices, its Executor Sessions grouped like the side pane), then rows without a coordinator and the allowed
  * folders. Layout, row pattern and empty state follow dsh's Automation tasks and Plugins pages; see styles.ts.
  */
 import { memo, useEffect, useId, useState, type ReactNode } from 'react'
-import type { CoordinatorInfo, SetCoordinatorMemoryResult } from '../types.ts'
+import type { CoordinatorInfo, ModelChoice, ModelChoices, SetCoordinatorMemoryResult } from '../types.ts'
 import type { FolderDecision, HostProblem, ModelHealth, ThreadInfo } from './contract.ts'
 import { CoordinatorArt } from './art.tsx'
 import { ExecutorPrompt } from './executor-prompt.tsx'
 import { CoordinatorMemory } from './memory.tsx'
+import { ModelSettings } from './models.tsx'
 import { FolderLine, PickWait, TypePathButton, usePendingPick, type PickResult } from './folder.tsx'
 import { CoordinatorName, Monogram } from './identity.tsx'
 import { NewCoordinatorForm } from './new-coordinator.tsx'
@@ -48,6 +49,14 @@ export interface PanelActions {
   setCoordinatorMemory(coordinatorId: string, text: string, revision: number): Promise<SetCoordinatorMemoryResult>
   /** Switch a coordinator's memory on or off (off keeps the text). */
   setCoordinatorMemoryEnabled(coordinatorId: string, enabled: boolean): Promise<void>
+  /** The models dsh offers and what a coordinator's two model settings resolve to. */
+  listModelChoices(coordinatorId: string): Promise<ModelChoices>
+  /** Calls back when dsh's models may have changed; returns the release. */
+  watchModels(listener: () => void): () => void
+  /** Set the model a coordinator's chat runs on; null clears the setting. */
+  setCoordinatorModel(coordinatorId: string, model: ModelChoice | null): Promise<void>
+  /** Set the model a coordinator's new Executor Sessions start on; null means the same as the coordinator. */
+  setExecutorModel(coordinatorId: string, model: ModelChoice | null): Promise<void>
   /** Rename a coordinator; throws with the host's reason when the name is refused. */
   renameCoordinator(coordinatorId: string, name: string): Promise<void>
   /** Archive a coordinator; `force` also stops its working Executor Sessions; `removeWorkspace` removes its sidebar Workspace (files stay). */
@@ -79,6 +88,8 @@ export interface PanelProps extends PanelActions {
   dshPermission?: Translate
   /** dsh's own approval card dictionary, when loaded: the confirmation buttons use its labels. */
   dshApproval?: Translate
+  /** dsh's own model picker dictionary, when loaded (models.tsx). */
+  dshModel?: Translate
 }
 
 /** A page notice: a short line, optionally under a bold title; `warning` for refusals the user can act on. */
@@ -358,7 +369,7 @@ function DeleteConfirm({ coordinator, archivedCount, t, onCancel, onConfirm }: {
   </div>
 }
 
-export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval, openCoordinator, newCoordinator, pickFolder, setCoordinatorFolder,
+export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval, dshModel, listModelChoices, watchModels, setCoordinatorModel, setExecutorModel, openCoordinator, newCoordinator, pickFolder, setCoordinatorFolder,
   setExecutorPrompt, setCoordinatorMemory, setCoordinatorMemoryEnabled, renameCoordinator, archiveCoordinator, deleteCoordinator, select, openSession, archiveThread, setThreadPermission, confirmFolder, removeAllowedFolder,
   resumeThread, refresh, holdFast }: PanelProps) {
   const snapshot = useCoordinator(s => s)
@@ -540,6 +551,9 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
       {health !== undefined && !health.ok && !archived && <ModelNotice health={health} t={t} busy={opening} onChoose={() => { void openChat(selected) }} />}
       <div className="dco-settings" data-testid="dco-settings">
         <FolderLine key={`folder-${selected.id}`} coordinator={selected} t={t} pickFolder={pickFolder} setFolder={setFolder} />
+        <ModelSettings key={`models-${selected.id}`} coordinator={selected} t={t} dsh={dshModel} load={listModelChoices} watch={watchModels}
+          onSetCoordinator={async (id, model) => { await setCoordinatorModel(id, model); refresh() }}
+          onSetExecutors={async (id, model) => { await setExecutorModel(id, model); refresh() }} />
         <ExecutorPrompt key={`prompt-${selected.id}`} coordinator={selected} t={t}
           onSave={async (id, text) => { await setExecutorPrompt(id, text); refresh() }} />
         <CoordinatorMemory key={`memory-${selected.id}`} coordinator={selected} t={t} {...(state?.epoch === undefined ? {} : { epoch: state.epoch })}

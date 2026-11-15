@@ -13,8 +13,8 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 // contract.ts re-exports the older wire types; the round-2 additions are imported from their owner directly.
 import type {
   ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CreateCoordinatorRequest, EnsureCoordinatorRequest, PingResult,
-  DeleteCoordinatorRequest, DeleteCoordinatorResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult,
-  SetExecutorPromptRequest,
+  DeleteCoordinatorRequest, DeleteCoordinatorResult, ListModelChoicesRequest, ModelChoices, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult,
+  SetExecutorPromptRequest, SetModelRequest,
 } from '../types.ts'
 import type { CoordinatorState, EnsureCoordinatorResult, ThreadInfo, ThreadPermissionState } from './contract.ts'
 
@@ -43,6 +43,8 @@ const modelSchema = () => z.object({
   model: z.string().optional(),
   reason: z.enum(['no-provider', 'no-model', 'model-unavailable']).optional().catch(undefined),
 })
+// A model by dsh's ids; the host checks every id against dsh's lists, so the codec only checks the shape.
+const modelChoiceSchema = () => z.object({ provider: z.string(), model: z.string(), reasoningEffort: z.string().optional() })
 let coordinatorInfo: z.ZodType<CoordinatorInfo> | undefined
 const coordinatorInfoSchema = (): z.ZodType<CoordinatorInfo> => (coordinatorInfo ??= z.object({
   id: z.string(),
@@ -65,6 +67,9 @@ const coordinatorInfoSchema = (): z.ZodType<CoordinatorInfo> => (coordinatorInfo
   // An unknown future chat state reads as absent; the client then falls back to sessionId and chatArchived.
   chat: z.enum(['open', 'archived', 'gone', 'none']).optional().catch(undefined),
   model: modelSchema().optional().catch(undefined),
+  // A host without the model settings sends none; a malformed one reads as not set.
+  coordinatorModel: modelChoiceSchema().optional().catch(undefined),
+  executorModel: modelChoiceSchema().optional().catch(undefined),
   createdAt: z.number(),
   updatedAt: z.number(),
 }) as z.ZodType<CoordinatorInfo>)
@@ -138,6 +143,27 @@ let memoryResult: z.ZodType<SetCoordinatorMemoryResult> | undefined
 const memoryResultSchema = (): z.ZodType<SetCoordinatorMemoryResult> => (memoryResult ??= z.object({ saved: z.boolean(), coordinator: coordinatorInfoSchema() }) as z.ZodType<SetCoordinatorMemoryResult>)
 let memoryEnabledRequest: z.ZodType<SetCoordinatorMemoryEnabledRequest> | undefined
 const memoryEnabledRequestSchema = (): z.ZodType<SetCoordinatorMemoryEnabledRequest> => (memoryEnabledRequest ??= z.object({ coordinatorId: z.string(), enabled: z.boolean() }))
+let modelChoicesRequest: z.ZodType<ListModelChoicesRequest> | undefined
+const modelChoicesRequestSchema = (): z.ZodType<ListModelChoicesRequest> => (modelChoicesRequest ??= z.object({ coordinatorId: z.string() }))
+const modelSettingSchema = () => z.object({ stored: modelChoiceSchema().optional(), effective: modelChoiceSchema().optional(), available: z.boolean(), unchecked: z.boolean().optional() })
+let modelChoices: z.ZodType<ModelChoices> | undefined
+const modelChoicesSchema = (): z.ZodType<ModelChoices> => (modelChoices ??= z.object({
+  groups: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    models: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      efforts: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
+      defaultEffort: z.string().optional(),
+    })),
+  })),
+  partial: z.boolean(),
+  coordinator: modelSettingSchema(),
+  executors: modelSettingSchema(),
+}) as z.ZodType<ModelChoices>)
+let setModelRequest: z.ZodType<SetModelRequest> | undefined
+const setModelRequestSchema = (): z.ZodType<SetModelRequest> => (setModelRequest ??= z.object({ coordinatorId: z.string(), model: modelChoiceSchema().nullable() }) as z.ZodType<SetModelRequest>)
 let renameRequest: z.ZodType<RenameCoordinatorRequest> | undefined
 const renameRequestSchema = (): z.ZodType<RenameCoordinatorRequest> => (renameRequest ??= z.object({ coordinatorId: z.string(), name: z.string() }))
 let deleteRequest: z.ZodType<DeleteCoordinatorRequest> | undefined
@@ -236,6 +262,30 @@ export const TYPERT_REMOTE = createTypertRemoteInfo({
       description: 'Set the standing instructions every new Executor Session of a coordinator starts with; empty text clears them.',
       invocation: { kind: 'direct' },
       parameters: [requestParameter('SetExecutorPromptRequest', promptRequestSchema)],
+      cancellation: { parameter: 'signal' },
+      result: { mode: 'strict', typeSymbol: `${PACKAGE}#CoordinatorInfo`, create: coordinatorInfoSchema },
+    },
+    'coordinator/listModelChoices': {
+      service: 'coordinator',
+      description: 'List the models and reasoning efforts dsh offers, with a coordinator\'s two model settings and what each resolves to now.',
+      invocation: { kind: 'direct' },
+      parameters: [requestParameter('ListModelChoicesRequest', modelChoicesRequestSchema)],
+      cancellation: { parameter: 'signal' },
+      result: { mode: 'strict', typeSymbol: `${PACKAGE}#ModelChoices`, create: modelChoicesSchema },
+    },
+    'coordinator/setCoordinatorModel': {
+      service: 'coordinator',
+      description: 'Set the model a coordinator\'s chat runs on; null clears the setting.',
+      invocation: { kind: 'direct' },
+      parameters: [requestParameter('SetModelRequest', setModelRequestSchema)],
+      cancellation: { parameter: 'signal' },
+      result: { mode: 'strict', typeSymbol: `${PACKAGE}#CoordinatorInfo`, create: coordinatorInfoSchema },
+    },
+    'coordinator/setExecutorModel': {
+      service: 'coordinator',
+      description: 'Set the model new Executor Sessions of a coordinator start on; null means the same as the coordinator.',
+      invocation: { kind: 'direct' },
+      parameters: [requestParameter('SetModelRequest', setModelRequestSchema)],
       cancellation: { parameter: 'signal' },
       result: { mode: 'strict', typeSymbol: `${PACKAGE}#CoordinatorInfo`, create: coordinatorInfoSchema },
     },
@@ -365,6 +415,9 @@ export interface CoordinatorRemote {
   createCoordinator(request: CreateCoordinatorRequest | undefined, signal?: AbortSignal): Promise<RemoteResult<EnsureCoordinatorResult>>
   setCoordinatorFolder(request: SetCoordinatorFolderRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
   setExecutorPrompt(request: SetExecutorPromptRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
+  listModelChoices(request: ListModelChoicesRequest, signal?: AbortSignal): Promise<RemoteResult<ModelChoices>>
+  setCoordinatorModel(request: SetModelRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
+  setExecutorModel(request: SetModelRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
   setCoordinatorMemory(request: SetCoordinatorMemoryRequest, signal?: AbortSignal): Promise<RemoteResult<SetCoordinatorMemoryResult>>
   setCoordinatorMemoryEnabled(request: SetCoordinatorMemoryEnabledRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
   renameCoordinator(request: RenameCoordinatorRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>

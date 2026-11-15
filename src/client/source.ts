@@ -18,7 +18,7 @@
  * `readme` (neutral demo content for the README screenshots: a weather CLI and a docs site, no notices).
  */
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { CoordinatorInfo, SetCoordinatorMemoryResult } from '../types.ts'
+import type { CoordinatorInfo, ModelChoice, ModelChoices, SetCoordinatorMemoryResult } from '../types.ts'
 import type { EnsureCoordinatorResult, FolderDecision, ThreadInfo, ThreadPermission, ThreadPermissionState, ThreadStatus } from './contract.ts'
 import type { ArchiveResult, ClientState, CoordinatorRemote } from './remote.ts'
 
@@ -42,6 +42,12 @@ export interface CoordinatorSource {
   setCoordinatorMemory(coordinatorId: string, text: string, revision: number, signal?: AbortSignal): Promise<SetCoordinatorMemoryResult>
   /** Switch the coordinator's memory on or off; off keeps the text. */
   setCoordinatorMemoryEnabled(coordinatorId: string, enabled: boolean, signal?: AbortSignal): Promise<CoordinatorInfo>
+  /** The models dsh offers (by provider, with their reasoning efforts) and what the coordinator's two model settings resolve to. */
+  listModelChoices(coordinatorId: string, signal?: AbortSignal): Promise<ModelChoices>
+  /** The model the coordinator's chat runs on; null clears the setting (the chat keeps the model it has). */
+  setCoordinatorModel(coordinatorId: string, model: ModelChoice | null, signal?: AbortSignal): Promise<CoordinatorInfo>
+  /** The model new Executor Sessions start on; null means the same as the coordinator. */
+  setExecutorModel(coordinatorId: string, model: ModelChoice | null, signal?: AbortSignal): Promise<CoordinatorInfo>
   renameCoordinator(coordinatorId: string, name: string, signal?: AbortSignal): Promise<CoordinatorInfo>
   /** `force` also stops working Executor Sessions; `removeWorkspace` asks the host to remove its sidebar Workspace (files stay). */
   archiveCoordinator(coordinatorId: string, options: { force: boolean; removeWorkspace: boolean }, signal?: AbortSignal): Promise<ArchiveResult>
@@ -117,6 +123,9 @@ export function remoteSource(remote: () => CoordinatorRemote | undefined): Coord
     setExecutorPrompt: (coordinatorId, text, signal) => call(() => get().setExecutorPrompt({ coordinatorId, text }, signal)),
     setCoordinatorMemory: (coordinatorId, text, revision, signal) => call(() => get().setCoordinatorMemory({ coordinatorId, text, revision }, signal)),
     setCoordinatorMemoryEnabled: (coordinatorId, enabled, signal) => call(() => get().setCoordinatorMemoryEnabled({ coordinatorId, enabled }, signal)),
+    listModelChoices: (coordinatorId, signal) => call(() => get().listModelChoices({ coordinatorId }, signal)),
+    setCoordinatorModel: (coordinatorId, model, signal) => call(() => get().setCoordinatorModel({ coordinatorId, model }, signal)),
+    setExecutorModel: (coordinatorId, model, signal) => call(() => get().setExecutorModel({ coordinatorId, model }, signal)),
     renameCoordinator: (coordinatorId, name, signal) => call(() => get().renameCoordinator({ coordinatorId, name }, signal)),
     archiveCoordinator: (coordinatorId, { force, removeWorkspace }, signal) => call(() => get().archiveCoordinator({
       coordinatorId, ...(force ? { force } : {}), ...(removeWorkspace ? { removeWorkspace } : {}),
@@ -142,6 +151,19 @@ const FAKE_MEMORY_NOETHER = '## About you\n- Prefers short reports: result first
   + '## Projects\n- api-gateway: CI runs on Node 22; the upload test is flaky under load, not broken.\n- tokenizer-bench: compare against main, never against the last release.'
 const FAKE_MEMORY_FEYNMAN = '## Release 0.4\n- Breaking config rename goes first in the notes.\n- Ship date agreed: Thursday, after the docs review.'
 
+/** The fake's model list: two providers, one model without reasoning efforts and one without a default effort. */
+const FAKE_MODELS: ModelChoices['groups'] = [
+  { id: 'deepseek-account', name: 'DeepSeek Account', models: [
+    { id: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', efforts: [{ id: 'high', name: 'High' }, { id: 'max', name: 'Max' }], defaultEffort: 'high' },
+    { id: 'deepseek-v4.1-pro', name: 'DeepSeek V4.1 Pro', efforts: [{ id: 'high', name: 'High' }, { id: 'max', name: 'Max' }], defaultEffort: 'high' },
+  ] },
+  { id: 'opencode-go', name: 'OpenCode Go', models: [
+    { id: 'glm-5.3', name: 'GLM 5.3' },
+    { id: 'kimi-k3', name: 'Kimi K3', efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }] },
+  ] },
+]
+const FAKE_DEFAULT_MODEL: ModelChoice = { provider: 'deepseek-account', model: 'deepseek-v4.1-flash', reasoningEffort: 'high' }
+
 /** In-memory fake that changes over time, so polling, sorting and transitions are visible without a host (development builds). */
 export function fakeSource(): CoordinatorSource {
   const now = Date.now()
@@ -162,6 +184,8 @@ export function fakeSource(): CoordinatorSource {
   const coordinators: CoordinatorInfo[] = [
     { id: B, sessionId: 'fake-coordinator-7f3e', name: 'Feynman', title: 'Release 0.4', home: `${BASE}/coordinator-feynman`,
       folder: `${HOME}/Library/Mobile Documents/coordinator-2`, folderProblem: 'the folder is inside ~/Library, which is refused',
+      // An executor model that is no longer offered, so the page shows its fallback note.
+      coordinatorModel: { provider: 'deepseek-account', model: 'deepseek-v4.1-pro', reasoningEffort: 'max' }, executorModel: { provider: 'signed-out', model: 'big-model' },
       memory: FAKE_MEMORY_FEYNMAN, memoryRevision: 3, memoryBy: { by: 'coordinator', at: now - 38 * min }, createdAt: now - 70 * min, updatedAt: now - 6 * min },
     { id: A, sessionId: realCoordinator ?? 'fake-coordinator-1a2b', name: 'Noether', title: 'Noether', home: `${BASE}/coordinator-noether`, folder: `${BASE}/coordinator-noether`,
       model: { ok: false, reason: 'model-unavailable', model: 'deepseek-official/deepseek-v4.1-flash' },
@@ -399,6 +423,40 @@ export function fakeSource(): CoordinatorSource {
       const record = find(coordinatorId)
       if (enabled) delete record.memoryOff
       else record.memoryOff = true
+      record.updatedAt = Date.now()
+      revision += 1
+      return { ...record }
+    },
+    async listModelChoices(coordinatorId, signal) {
+      await delay(signal)
+      const record = find(coordinatorId)
+      // Like the host: a stored choice counts while its model and effort are in the list.
+      const offered = (choice: ModelChoice | undefined): boolean => {
+        const model = FAKE_MODELS.find(g => g.id === choice?.provider)?.models.find(m => m.id === choice?.model)
+        return model !== undefined && (choice?.reasoningEffort === undefined || model.efforts?.some(e => e.id === choice.reasoningEffort) === true)
+      }
+      const chat = record.coordinatorModel ?? FAKE_DEFAULT_MODEL
+      const executors = record.executorModel !== undefined && offered(record.executorModel) ? record.executorModel : chat
+      return {
+        groups: FAKE_MODELS.map(g => ({ ...g, models: g.models.map(m => ({ ...m })) })), partial: false,
+        coordinator: { ...(record.coordinatorModel === undefined ? {} : { stored: record.coordinatorModel }), effective: chat, available: record.coordinatorModel === undefined || offered(record.coordinatorModel) },
+        executors: { ...(record.executorModel === undefined ? {} : { stored: record.executorModel }), effective: executors, available: record.executorModel === undefined || offered(record.executorModel) },
+      }
+    },
+    async setCoordinatorModel(coordinatorId, model, signal) {
+      await delay(signal)
+      const record = find(coordinatorId)
+      if (model === null) delete record.coordinatorModel
+      else record.coordinatorModel = { ...model }
+      record.updatedAt = Date.now()
+      revision += 1
+      return { ...record }
+    },
+    async setExecutorModel(coordinatorId, model, signal) {
+      await delay(signal)
+      const record = find(coordinatorId)
+      if (model === null) delete record.executorModel
+      else record.executorModel = { ...model }
       record.updatedAt = Date.now()
       revision += 1
       return { ...record }

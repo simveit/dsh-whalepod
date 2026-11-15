@@ -1,4 +1,5 @@
 import type { ThreadInfo } from '../types.ts';
+import { type ModelChoice } from './model.ts';
 import type { PersistedFacts } from './status.ts';
 export interface PersistedThread {
     info: ThreadInfo;
@@ -66,6 +67,13 @@ export interface PersistedCoordinator {
     memoryExecutors?: string[];
     /** The owner switched this coordinator's memory off: nobody is shown the text or may change it by tool; it is kept. */
     memoryOff?: boolean;
+    /**
+     * The model the owner set for the chat (ids from dsh's lists); absent = the chat keeps the model it has. A model
+     * picked by hand in the chat is stored here too, so the two are one value.
+     */
+    coordinatorModel?: ModelChoice;
+    /** The model new Executor Sessions start on; absent = same as the coordinator. */
+    executorModel?: ModelChoice;
     /** Which log mark validation expects: the opening turn (or the legacy title), or the role mark of an adopted chat. */
     marks?: 'opening' | 'role';
     /** Chat Sessions this coordinator had before a Reopen; messages they sent into threads still read as the coordinator's. */

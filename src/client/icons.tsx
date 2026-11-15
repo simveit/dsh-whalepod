@@ -25,6 +25,13 @@ export const IconCoordinator = glyph(<>
   <path stroke="currentColor" d="M12.0851 12.9417C12.9688 12.9417 13.6851 12.2254 13.6851 11.3417C13.6851 10.458 12.9688 9.7417 12.0851 9.7417C11.2015 9.7417 10.4851 10.458 10.4851 11.3417C10.4851 12.2254 11.2015 12.9417 12.0851 12.9417Z" />
 </>)
 
+/** A model: a cube in outline. The plugin's own drawing in the manner of dsh's regular icons (1px stroke on the 16px grid). */
+export const IconModel = glyph(<>
+  <path stroke="currentColor" strokeLinejoin="round" d="M8 1.5L13.5 4.75V11.25L8 14.5L2.5 11.25V4.75L8 1.5Z" />
+  <path stroke="currentColor" strokeLinejoin="round" d="M2.5 4.75L8 8L13.5 4.75" />
+  <path stroke="currentColor" d="M8 8V14.5" />
+</>)
+
 /** `archive-outline`. */
 export const IconArchive = glyph(<>
   <path stroke="currentColor" d="M13.5 2.5H2.5C1.94772 2.5 1.5 2.94772 1.5 3.5V4.5C1.5 5.05228 1.94772 5.5 2.5 5.5H13.5C14.0523 5.5 14.5 5.05228 14.5 4.5V3.5C14.5 2.94772 14.0523 2.5 13.5 2.5Z" />

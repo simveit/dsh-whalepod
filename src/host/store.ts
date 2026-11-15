@@ -16,6 +16,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node
 import { dirname, join, sep } from 'node:path'
 import type { ThreadInfo } from '../types.ts'
 import { ARCHIVED_COORDINATORS_KEEP, checkCoordinatorName, cleanExecutorPrompt, cleanMemory, COORDINATOR_TITLE, EXECUTOR_PROMPT_MAX, isCoordinatorId, isExecutorId, MEMORY_MAX, MEMORY_RAW_MAX, newCoordinatorId } from './ids.ts'
+import { modelChoiceOf, type ModelChoice } from './model.ts'
 import type { PersistedFacts } from './status.ts'
 
 export interface PersistedThread {
@@ -83,6 +84,13 @@ export interface PersistedCoordinator {
   memoryExecutors?: string[]
   /** The owner switched this coordinator's memory off: nobody is shown the text or may change it by tool; it is kept. */
   memoryOff?: boolean
+  /**
+   * The model the owner set for the chat (ids from dsh's lists); absent = the chat keeps the model it has. A model
+   * picked by hand in the chat is stored here too, so the two are one value.
+   */
+  coordinatorModel?: ModelChoice
+  /** The model new Executor Sessions start on; absent = same as the coordinator. */
+  executorModel?: ModelChoice
   /** Which log mark validation expects: the opening turn (or the legacy title), or the role mark of an adopted chat. */
   marks?: 'opening' | 'role'
   /** Chat Sessions this coordinator had before a Reopen; messages they sent into threads still read as the coordinator's. */
@@ -228,6 +236,9 @@ function coordinatorOf(value: unknown): PersistedCoordinator | undefined {
       }
     })(),
     ...(c.memoryOff === true ? { memoryOff: true } : {}),
+    // Only the shape is checked here: whether dsh still offers the model is asked when it is used (providers load later).
+    ...(() => { const model = modelChoiceOf(c.coordinatorModel); return model === undefined ? {} : { coordinatorModel: model } })(),
+    ...(() => { const model = modelChoiceOf(c.executorModel); return model === undefined ? {} : { executorModel: model } })(),
     ...(c.marks === 'opening' || c.marks === 'role' ? { marks: c.marks } : {}),
     ...(Array.isArray(c.pastSessionIds) ? { pastSessionIds: c.pastSessionIds.filter((s): s is string => typeof s === 'string').slice(-10) } : {}),
     createdAt: isNumber(c.createdAt) ? c.createdAt : 0,

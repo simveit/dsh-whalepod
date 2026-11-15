@@ -186,8 +186,80 @@ export interface CoordinatorInfo {
     chat?: 'open' | 'archived' | 'gone' | 'none';
     /** Model availability for this coordinator; absent until the host has checked it once. */
     model?: ModelHealth;
+    /**
+     * The model the owner set for this coordinator's chat (`setCoordinatorModel`, or the model picker in the chat, which
+     * is the same setting). Absent when none is set: the chat keeps the model it has.
+     */
+    coordinatorModel?: ModelChoice;
+    /**
+     * The model new Executor Sessions of this coordinator start on (`setExecutorModel`). Absent means "same as the
+     * coordinator". Applies to Executor Sessions started after the change.
+     */
+    executorModel?: ModelChoice;
     createdAt: number;
     updatedAt: number;
+}
+/**
+ * A model as dsh names it: a provider id and a model id from dsh's own lists, and optionally the id of one of the
+ * reasoning efforts dsh lists for that model (absent = the provider's default). Each id has at most 200 characters.
+ */
+export interface ModelChoice {
+    provider: string;
+    model: string;
+    reasoningEffort?: string;
+}
+/** One model of the list the Coordinator page chooses from, with the reasoning efforts dsh lists for it. */
+export interface ModelOption {
+    id: string;
+    name: string;
+    efforts?: {
+        id: string;
+        name: string;
+    }[];
+    /** The effort dsh uses for this model when none is chosen. */
+    defaultEffort?: string;
+}
+/** One of a coordinator's two model settings, as the host resolves it now. */
+export interface ModelSettingState {
+    /** What the owner set; absent when nothing is set. */
+    stored?: ModelChoice;
+    /**
+     * What applies now. For the coordinator: the model its chat runs on. For executors: the model an Executor Session
+     * started now would get. Absent when no model is available.
+     */
+    effective?: ModelChoice;
+    /** False when `stored` names a model or effort dsh no longer offers; `effective` is then the fallback. */
+    available: boolean;
+    /**
+     * True when dsh could not be asked about `stored` just now (its provider's list failed); `available` is then false.
+     * For executors nothing stands in for the model meanwhile: no Executor Session starts, and `effective` is absent.
+     */
+    unchecked?: boolean;
+}
+/** Result of `coordinator/listModelChoices`: dsh's models by provider, and one coordinator's two settings. */
+export interface ModelChoices {
+    /** Providers in dsh's order (the DeepSeek account first), each with its models; providers without models are left out. */
+    groups: {
+        id: string;
+        name: string;
+        models: ModelOption[];
+    }[];
+    /** True when the list of at least one provider could not be loaded, so models may be missing. */
+    partial: boolean;
+    coordinator: ModelSettingState;
+    executors: ModelSettingState;
+}
+/** Request of `coordinator/listModelChoices`. */
+export interface ListModelChoicesRequest {
+    coordinatorId: string;
+}
+/**
+ * Request of `coordinator/setCoordinatorModel` and `coordinator/setExecutorModel`; both return the updated
+ * `CoordinatorInfo`. `model` must come from `listModelChoices`; `null` clears the setting.
+ */
+export interface SetModelRequest {
+    coordinatorId: string;
+    model: ModelChoice | null;
 }
 export interface CoordinatorState {
     /** Live coordinators first, newest first; archived ones last. */

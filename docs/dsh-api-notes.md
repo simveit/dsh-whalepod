@@ -77,7 +77,22 @@ Gotchas:
 | `agent.model.current()` | The session's own selection, else its last request, else the dsh default it follows. |
 | `agent.model.select({ provider, model, reasoningEffort? })` | Selects a model in the session. |
 | `ctx.agentDefaultModel.currentSelection()` | The deployment default a new session follows. |
-| `ctx.llm.listProviders()`, `ctx.llm.listModels(provider)` | Used to decide whether a model is available. |
+| `ctx.llm.listProviders()`, `ctx.llm.listModels(provider)` | Used to decide whether a model is available, and for the model list of the Coordinator page. Providers are `{ id, name }`, models `{ id, name, description?, badge? }`. `listModels` throws for a provider without a registered adapter. |
+| `ctx.llm.resolveModelInfo(provider, model)` | One model's metadata. The plugin reads `reasoning?: { efforts: [{ id, name }], defaultEffort? }`. It asks the provider's adapter, so it can be slow or fail per provider. |
+| `ctx.llm.resolveCallConfig({ provider, model, reasoningEffort? })` | dsh's own check of a selection: throws for an unknown provider and, with `UNSUPPORTED_REASONING_EFFORT`, for an effort the model does not offer. The plugin calls it before it stores or uses a model setting. |
+| `sessionController.selectModel` (Remote `session.selectModel`) | Not called by the plugin. The composer's picker and `/model` use it: it checks the model, calls `agent.model.select`, and then saves the same selection as the deployment default (`agentDefaultModel.saveSelection`). |
+| `session.modelCatalog()` (Remote) | dsh's own list for its pickers, built from the three `ctx.llm` calls above. The plugin builds its list on the host from the same calls instead, so the page gets it together with the coordinator's settings. |
+
+Model facts the per-coordinator model settings rely on. All are read in the 0.2.2-rc.3 sources and not yet seen at runtime:
+
+- A selection is per Session. `sessionController.create` takes no model, and agent presets carry none, so a plugin creates the Session and then selects.
+- `agent.model.select` appends a `model/selection` event with the selection as its data, unless the selection equals the Session's recorded one. The `modelSelection` projection keeps it as pending until a request with the same selection is logged. The loop reads `agent.model.current()` before every step, so a selection applies to the next model request; a running step keeps its model.
+- `session/event` delivers that `model/selection` event. The plugin stores a selection made in a coordinator's chat as the coordinator's model setting, after it checked the selection against dsh's lists itself.
+- When the provider or model of a step differs from the last request, dsh adds a user-role notice to the history ("[model changed: ...]"). A change of the effort alone adds none.
+- A Session without a selection and without a request follows `agentDefaultModel.currentSelection()` live, so a change of the default moves it.
+- A Teammate gets the provider, model and effort of its Lead's latest request header at delegation (`resolveChildAgentOptions` in dsh-subagent). A Lead can name another model only when the user switched on dsh's model-selectable subagents; the allowed models are then recorded once per top-level Session (`subagent/model-selection-policy`). The plugin writes no such policy.
+- dsh's composer picker (`ModelSelect`, dsh-client-ui-model-selection) is not exported; the package exports the directory classes and types only. Its dictionary is the locale namespace `model`.
+- The client can listen to forwarded host events with `ctx.remote.$on(event, listener)`, which returns a disposer. dsh's pickers reload their list on `llm/adapters-updated`, `llm/models-updated`, `settings/document-updated`, `credentials/record-updated` and `credentials/reference-updated`.
 
 Gotcha: a new session has no model of its own. The shipped default is a DeepSeek route, so a plugin-created session fails on its first turn when the user has no DeepSeek key, unless the plugin selects a model.
 
@@ -265,6 +280,7 @@ Typert Remote on the host: extend `TypertRemoteService`, mark methods with `@Rem
 17. `todo/write` still carries `{ todos: [{ content, status }] }` with the three statuses, and `todo_write` is still in the `standard` preset.
 18. `pnpm check` passes, and an end-to-end run with the mock model covers a result, an approval, a native question, a question to the coordinator, a peer message, a stop, the cap and a restart, plus two coordinators: adoption of a New Session in a coordinator's group (no coordinator tool call before the first typed message), cross-coordinator refusals, a folder change, a rename, an Executor prompt reaching a new executor, and an archive.
 19. Whether dsh escapes a closing `</system-reminder>` inside a runtime context's text. This is not verified; the plugin does not rely on it and removes such tags from the coordinator's memory itself (`cleanMemory`). If dsh adds its own escaping or changes the wrapper's tag, check that the memory block still reads as one block. Also check that a context whose text changes only after a plugin reload (the memory tag's suffix is keyed per process) is logged once and not at every request.
+20. The model members still behave as listed under Models: `resolveModelInfo` and `resolveCallConfig` exist with these shapes, `agent.model.select` logs `model/selection`, `selectModel` is still the only caller that saves the default, a Teammate still takes its Lead's latest request route, and `ctx.remote.$on` still delivers the `llm/*` events to a plugin's client.
 
 ## Round 2 runtime checks
 

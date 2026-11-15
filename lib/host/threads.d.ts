@@ -1,4 +1,4 @@
-import type { ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelHealth, ReportKind, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermissionState } from '../types.ts';
+import type { ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelChoices, ModelHealth, ReportKind, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermissionState } from '../types.ts';
 import { type GuardFs } from './cwd-guard.ts';
 import type { HostContext, SessionId } from './dsh.ts';
 import { type CoordinatorConfig } from './ids.ts';
@@ -641,9 +641,14 @@ export declare class ThreadService implements ThreadOps {
     private modelAvailable;
     private defaultModel;
     /**
-     * Pick the model of a Session the plugin has just created (see model.ts). A thread takes the coordinator's model;
-     * a new coordinator keeps the default it follows when that works. Never called on an existing coordinator, so a
-     * model the user picked there is never replaced.
+     * Pick the model of a Session the plugin has just created (see model.ts). A thread takes the first of `preferred`
+     * (the model set for the coordinator's executors, else the coordinator's model); a new coordinator keeps the default
+     * it follows when that works. Never called on an existing coordinator, so a model the user picked there is never
+     * replaced.
+     * @param preferred - models to try in order, before the dsh default; undefined entries are skipped. Each one passed
+     *   `choiceProblem` a moment ago and is not asked about again; the dsh default gets the provider and model check.
+     * @param pinned - the owner's own choice among `preferred`: when it is picked it is recorded in the Session even if
+     *   the Session follows that model anyway, so a later change of the dsh default leaves the Session alone.
      * @returns the model in use, or undefined when none is available (the user must pick one in the chat).
      */
     private ensureModel;
@@ -717,6 +722,65 @@ export declare class ThreadService implements ThreadOps {
      * @param previous - the name before a rename, if any.
      */
     private applyName;
+    /**
+     * Why a model choice cannot be used now, or undefined when dsh offers it: its provider is one of dsh's providers,
+     * its model is in that provider's list, its reasoning effort (when it names one) is one dsh lists for the model, and
+     * dsh's own check of the selection passes. Asked on every set, for a selection made in a coordinator's chat before
+     * it is stored, and wherever a stored choice or a chat's model is selected in a new Session; nothing a request, an
+     * event or the state file names reaches a new Session without it. `COULD_NOT_CHECK` when dsh could not be asked.
+     */
+    private choiceProblem;
+    /**
+     * The models a new Executor Session of a coordinator may start on, each one checked with `choiceProblem`: the model
+     * set for its executors (`wanted`), or when none is set or dsh no longer offers it (`unavailable`), the model its
+     * chat runs on now, else the model stored for the chat. `ensureModel` adds the dsh default.
+     *
+     * `unchecked`: dsh could not be asked about the executors' model (its provider's list failed). Nothing stands in for
+     * it then, because a Session keeps the model it starts on: `executor_start` starts nothing and says so. A model of
+     * the chat that cannot be checked is left out, as it was before the setting existed.
+     */
+    private executorModels;
+    /**
+     * A model was selected in a coordinator's chat: the user picked it in the composer, or the plugin selected the
+     * stored one. The chat and the stored setting are one value, so the selection is stored, once it passed the same
+     * check as a choice made on the page (`choiceProblem`): dsh's picker checks what it selects, but any plugin can
+     * select a model in a Session. A selection that is already the stored one changes nothing, and one that the chat
+     * replaced or that its coordinator no longer has by the time the check answers is not stored.
+     */
+    private chatModelSelected;
+    /** The coordinator and the checked model of a model request; `null` clears, anything dsh does not offer is refused. */
+    private modelRequest;
+    /**
+     * The model of a coordinator's chat (a Remote method; only the owner may call it; no model tool can read or change
+     * it). The choice must be one dsh offers. It is stored and selected in the open chat, where it applies from the next
+     * model request; `null` clears the stored value and leaves the chat as it is. The selection goes through the chat's
+     * Agent (`agent.model.select`), never through dsh's `session.selectModel`, which would also change the model new
+     * Sessions of the whole dsh follow.
+     */
+    setCoordinatorModel(request: {
+        coordinatorId?: unknown;
+        model?: unknown;
+    }): Promise<CoordinatorInfo>;
+    /**
+     * The model new Executor Sessions of a coordinator start on (a Remote method; only the owner may call it; no model
+     * tool can read or change it). The choice must be one dsh offers; `null` means "same as the coordinator". It applies
+     * to Executor Sessions started afterwards and touches no existing Session.
+     */
+    setExecutorModel(request: {
+        coordinatorId?: unknown;
+        model?: unknown;
+    }): Promise<CoordinatorInfo>;
+    /**
+     * What the Coordinator page chooses from (a Remote method; owner only): dsh's providers with their models and
+     * reasoning efforts, and the coordinator's two settings with what each resolves to now. Only ids and display names
+     * leave dsh's registry. A provider whose list fails is left out, a model whose details fail is listed without
+     * efforts, and `partial` says so in both cases, without the error text.
+     */
+    modelChoices(request: {
+        coordinatorId?: unknown;
+    }): Promise<ModelChoices>;
+    /** dsh's providers (the DeepSeek account first, then DeepSeek, as dsh's own picker orders them) with their models. */
+    private modelCatalog;
     /**
      * The user's Executor prompt for a coordinator (a Remote method; only the owner may call it; no model tool can read
      * or change it). Empty text clears it. It applies to Executor Sessions started afterwards.

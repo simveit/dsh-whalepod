@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pickModel, type ModelChoice } from '../src/host/model.ts'
+import { modelChoiceOf, pickModel, sameChoice, type ModelChoice } from '../src/host/model.ts'
 
 const deepseek: ModelChoice = { provider: 'deepseek-official', model: 'deepseek-flash' }
 const flash: ModelChoice = { provider: 'opencode-go', model: 'deepseek-v4.1-flash' }
@@ -36,4 +36,33 @@ test('a failed availability check never replaces the current model, and never se
   const unknown = async () => undefined
   assert.deepEqual(await pickModel(flash, [deepseek], unknown), { choice: flash, select: false })
   assert.deepEqual(await pickModel(undefined, [deepseek], unknown), { choice: undefined, select: false })
+})
+
+test('three candidates: the executors\' model, the coordinator\'s model, the dsh default, in that order', async () => {
+  // The first one is taken while it is available, with its reasoning effort.
+  const high = { ...flash, reasoningEffort: 'high' }
+  assert.deepEqual(await pickModel(deepseek, [high, other, deepseek], only(flash, other, deepseek), true), { choice: high, select: true })
+  // An unavailable first candidate falls through to the next, then to the last.
+  assert.deepEqual(await pickModel(deepseek, [flash, other, deepseek], only(other, deepseek), true), { choice: other, select: true })
+  assert.deepEqual(await pickModel(deepseek, [flash, other, deepseek], only(deepseek), true), { choice: deepseek, select: false })
+  // A candidate that is left out (nothing set) is skipped.
+  assert.deepEqual(await pickModel(deepseek, [undefined, other, deepseek], only(flash, other, deepseek), true), { choice: other, select: true })
+  // The same model with another effort is a change of the Session.
+  assert.deepEqual(await pickModel(flash, [high], only(flash), true), { choice: high, select: true })
+})
+
+test('a model choice from outside is three ids, or nothing', () => {
+  assert.deepEqual(modelChoiceOf({ provider: 'p', model: 'm' }), { provider: 'p', model: 'm' })
+  assert.deepEqual(modelChoiceOf({ provider: 'p', model: 'm', reasoningEffort: 'high', apiKey: 'k' }), { provider: 'p', model: 'm', reasoningEffort: 'high' })
+  assert.deepEqual(modelChoiceOf({ provider: 'p', model: 'x'.repeat(200) }), { provider: 'p', model: 'x'.repeat(200) })
+  for (const bad of [undefined, null, 'p/m', 7, [], ['p', 'm'], {}, { provider: 'p' }, { model: 'm' }, { provider: '', model: 'm' }, { provider: 'p', model: 7 },
+    { provider: 'p', model: 'x'.repeat(201) }, { provider: 'p\u0000', model: 'm' }, { provider: 'p', model: 'm\n' }, { provider: 'p', model: 'm', reasoningEffort: '' },
+    { provider: 'p', model: 'm', reasoningEffort: null }, { provider: 'p', model: 'm', reasoningEffort: 'x'.repeat(201) }]) {
+    assert.equal(modelChoiceOf(bad), undefined, JSON.stringify(bad))
+  }
+  assert.equal(sameChoice(undefined, undefined), true)
+  assert.equal(sameChoice(flash, { ...flash }), true)
+  assert.equal(sameChoice(flash, { ...flash, reasoningEffort: 'high' }), false)
+  assert.equal(sameChoice(flash, other), false)
+  assert.equal(sameChoice(flash, undefined), false)
 })
