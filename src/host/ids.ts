@@ -274,10 +274,12 @@ export function threadDir(root: string, title: string, threadId: string, used: (
 
 /**
  * The absolute folder a brief names on its "Working directory:" line, when the coordinator wrote one there but did
- * not pass it as `cwd` (a real model did exactly that). Only an absolute or `~/` path counts.
+ * not pass it as `cwd` (a real model did exactly that). Only an absolute or `~/` path counts. What may stand before
+ * the words on their line (list marks, numbers, emphasis) never includes a line break: with one in it, every line
+ * start of a text of many line breaks would be read on to the end of the text.
  */
 export function briefWorkingDirectory(brief: string): string | undefined {
-  const match = /^[\W\d]*(?:working directory|working folder|cwd)[\s*_]*:[\s*_]*(`?)((?:~\/|\/)[^\s`'"]*)\1/im.exec(brief)
+  const match = /^(?:[^\w\n\r\u2028\u2029]|\d)*(?:working directory|working folder|cwd)[\s*_]*:[\s*_]*(`?)((?:~\/|\/)[^\s`'"]*)\1/im.exec(brief)
   if (match === null) return undefined
   const path = match[2]!.replace(/[.,;:)]+$/, '')
   return path === '' || path === '/' ? undefined : path

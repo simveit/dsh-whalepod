@@ -11,18 +11,28 @@
 /** The plugin's own coordinator tools. */
 export declare const COORDINATOR_OWN: readonly ["executor_start", "executor_message", "executor_list", "executor_read", "executor_flag_user", "executor_stop", "executor_archive", "memory_update", "memory_read", "executor_check_later"];
 /**
- * Stock tools the coordinator keeps: read and search local files, ask the user, its todos. No network tool. `session_search` is not
- * one of them (S1): it reads every Session log, other coordinators' chats and Executor Session output included, and
- * its results carry no data fence.
+ * Stock tools the coordinator keeps: read and search local files, load a skill, ask the user, its todos. No network
+ * tool. `skill` returns a skill's text and runs nothing; dsh lists the skills only to an agent that has the tool, so
+ * without it a coordinator could not name a skill in an Assignment (decision 70). `session_search` is not one of
+ * them (S1): it searches every Session log, other coordinators' chats and Executor Session output included, and its
+ * results carry no data fence. That keeps the tool away, not the logs: they are files in the dsh home, which a
+ * coordinator can read like any Session (security.md, Known limits).
  */
-export declare const COORDINATOR_STOCK: readonly ["read", "read_image", "glob", "grep", "ask_user_question", "todo_write"];
+export declare const COORDINATOR_STOCK: readonly ["read", "read_image", "glob", "grep", "skill", "ask_user_question", "todo_write"];
 /**
- * Names that never go on the list, even through `coordinatorExtraTools`: they execute, write, spawn work, read other
- * Sessions, manage plugins or skills, or drive terminals and office documents.
+ * Names that never go on the list, even through `coordinatorExtraTools`. The rule: a coordinator gets no tool that
+ * writes files, executes code, spawns or steers other agents, drives a terminal, a browser or office documents,
+ * reaches the network, reads Session logs or traces, manages plugins, or changes where its chat works. The set holds
+ * dsh's own tools of these kinds, by the tool catalog of dsh 0.2.2-rc.3 (`docs/tool-catalog.md` in the dsh package),
+ * and common names of such tools elsewhere. `tests/fixpass.test.ts` sorts every name of that catalog into "never",
+ * "stock" or "the user may add it", so a dsh tool that is new there has to be placed on purpose.
  */
 export declare const COORDINATOR_NEVER: Set<string>;
-/** Name prefixes that are never on the list either: families of tools that drive terminals, office documents or browsers. */
-export declare const COORDINATOR_NEVER_PREFIXES: readonly ["office_", "user_terminal_", "terminal_", "browser_", "web_"];
+/**
+ * Name prefixes that are never on the list either: families of tools that drive terminals, office documents or
+ * browsers (`stagehand_` is dsh's own browser tools), reach the web, or read Session logs.
+ */
+export declare const COORDINATOR_NEVER_PREFIXES: readonly ["office_", "user_terminal_", "terminal_", "browser_", "stagehand_", "web_", "session_"];
 /** Whether a tool name may never reach a coordinator chat. */
 export declare function neverForCoordinator(name: string): boolean;
 /**

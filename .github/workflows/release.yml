@@ -8,7 +8,7 @@
 # Two jobs: `build` installs, checks and packs with a read-only token and uploads the files as an artifact;
 # `release` holds the write token, checks out nothing, runs no project code, and only publishes that artifact.
 #
-# Untested: this workflow has not run on GitHub yet. See ci.yml for the toolchain notes.
+# See ci.yml for the toolchain notes.
 name: Release
 
 on:

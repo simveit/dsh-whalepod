@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { coordinatorAllow, neverForCoordinator } from '../src/host/coordinator-tools.ts'
+import { COORDINATOR_STOCK, coordinatorAllow, coordinatorWanted, neverForCoordinator } from '../src/host/coordinator-tools.ts'
 import { checkThreadFolder, coordinatorFolderProblem, type GuardEnv } from '../src/host/cwd-guard.ts'
 import { pathText } from '../src/host/fence.ts'
 import { textMatch } from '../src/host/home-guard.ts'
@@ -40,16 +40,58 @@ async function startIn(r: Rig, coordinator: FakeAgent, title: string, extra: Rec
   return result
 }
 
-const creds = (r: Rig) => ({ file_path: join(r.dir, 'dsh-home', '.credentials.yaml') })
+/** A read of the plugin's own state file, which the state-folder guard refuses. */
+const ownState = (r: Rig) => ({ file_path: r.stateFile })
 const roleText = (r: Rig, id: string) => r.host.sections[0]!.text({ agent: { id } })
 
 // --- S1 ---------------------------------------------------------------------------------------------------------
 
-test('S1: session_search and plugin, skill, office and terminal tools never reach a coordinator, not even as extra tools', () => {
+test('S1: session_search and plugin, office and terminal tools never reach a coordinator, not even as extra tools; skill does', () => {
   const registered = ['read', 'session_search', 'plugin_manager', 'plugin_market', 'skill', 'office_docx', 'user_terminal_send', 'job_output', 'mcp__x__y']
-  const extra = ['session_search', 'plugin_manager', 'skill', 'office_docx', 'user_terminal_send', 'job_output', 'mcp__x__y']
-  assert.deepEqual(coordinatorAllow(registered, extra), ['mcp__x__y', 'read'])
+  const extra = ['session_search', 'plugin_manager', 'office_docx', 'user_terminal_send', 'job_output', 'mcp__x__y']
+  // Decision 70: `skill` is a stock tool of a coordinator (it returns a skill's text), with or without the plugin's own tools.
+  assert.deepEqual(coordinatorAllow(registered, extra), ['mcp__x__y', 'read', 'skill'])
+  assert.deepEqual(coordinatorAllow(registered, [], false), ['read', 'skill'])
+  assert.ok(!neverForCoordinator('skill'))
   for (const name of extra.slice(0, -1)) assert.ok(neverForCoordinator(name), name)
+})
+
+test('F4: every tool of the dsh catalog is never for a coordinator, a stock tool, or one the user may add', () => {
+  // The tool names of dsh 0.2.2-rc.3, from `docs/tool-catalog.md` in the dsh package (75 names and the shipped alias
+  // `subagent_fork`), each under the reason it is kept from a coordinator. A coordinator gets no tool that:
+  const never: Record<string, string[]> = {
+    'executes code': ['bash', 'pwsh', 'run_code', 'load_workspace_dependencies'],
+    'writes files': ['write', 'edit', 'apply_patch', 'str_replace_editor', 'office_convert', 'office_recalculate', 'office_render'],
+    'spawns or steers other agents, or schedules or controls background work': ['subagent', 'subagent_fork', 'subagent_oar', 'workflow', 'ralph', 'send_message', 'wait_agent',
+      'interrupt_agent', 'list_agents', 'team_task_create', 'team_task_update', 'job_kill', 'job_list', 'job_output', 'schedule_create', 'schedule_edit'],
+    'drives a terminal': ['terminal_open', 'terminal_send', 'terminal_read', 'terminal_list', 'terminal_close', 'terminal_signal', 'user_terminal_list', 'user_terminal_read'],
+    'drives a browser or reaches the network': ['stagehand_act', 'stagehand_extract', 'stagehand_navigate', 'stagehand_observe', 'stagehand_screenshot', 'stagehand_tabs', 'web_fetch', 'web_search'],
+    'reads Session logs or traces': ['session_search', 'session_trace', 'session_event_read', 'session_event_search', 'session_event_trace'],
+    'manages plugins': ['plugin_manager', 'plugin_market'],
+    'changes where the chat works': ['working_directory', 'create_worktree'],
+  }
+  const stock = ['read', 'read_image', 'glob', 'grep', 'skill', 'ask_user_question', 'todo_write']
+  // What is left reads or asks and does none of the above. A coordinator has none of these unless the user lists one.
+  const userMayAdd = ['list_mcp_resource_templates', 'list_mcp_resources', 'read_mcp_resource', 'propose_action', 'exit_plan_mode', 'present', 'cordis_inspect_list',
+    'cordis_inspect_query', 'create_goal', 'get_goal', 'update_goal', 'schedule_list', 'schedule_view', 'lsp', 'list_subagent_models', 'team_task_get', 'team_task_list']
+  const refused = Object.values(never).flat()
+  const catalog = [...refused, ...stock, ...userMayAdd]
+  assert.equal(catalog.length, 76)
+  assert.equal(new Set(catalog).size, 76)
+  for (const [why, names] of Object.entries(never)) {
+    for (const name of names) {
+      assert.ok(neverForCoordinator(name), `${name} ${why}`)
+      assert.ok(!coordinatorWanted([name]).has(name), `${name} listed as an extra tool`)
+    }
+  }
+  assert.deepEqual([...COORDINATOR_STOCK].sort(), [...stock].sort())
+  for (const name of [...stock, ...userMayAdd]) assert.ok(!neverForCoordinator(name), name)
+  // By default a coordinator has its own tools and the stock ones, whatever dsh registers.
+  assert.deepEqual(coordinatorAllow(catalog, [], false), [...stock].sort())
+  assert.deepEqual(coordinatorAllow(catalog, catalog, false), [...stock, ...userMayAdd].sort())
+  // The audit's names, and a later tool of the browser or the Session-log family.
+  for (const name of ['run_code', 'str_replace_editor', 'subagent_oar', 'stagehand_navigate', 'stagehand_act', 'ralph', 'load_workspace_dependencies', 'session_trace',
+    'session_event_read', 'session_event_search', 'session_event_trace', 'stagehand_upload', 'session_export']) assert.ok(neverForCoordinator(name), name)
 })
 
 test('S1/I5: the guard enforces the coordinator allow list even when narrowing failed', async () => {
@@ -61,6 +103,7 @@ test('S1/I5: the guard enforces the coordinator allow list even when narrowing f
     assert.match(await r.host.policy(r.coordinator, name, { command: 'ls' }) ?? '', /a coordinator may not use/, name)
   }
   assert.equal(await r.host.policy(r.coordinator, 'read', { file_path: join(r.root, 'notes.md') }), undefined)
+  assert.equal(await r.host.policy(r.coordinator, 'skill', { name: 'review' }), undefined)
   r.host.dispose()
 })
 
@@ -274,7 +317,7 @@ test('S6: loaded allowed folders ask again until the user confirms them in this 
 
 // --- S7 ---------------------------------------------------------------------------------------------------------
 
-test('S7: with a corrupt state file, coordinator chats stay narrowed and executors keep the dsh-home guard', async () => {
+test('S7: with a corrupt state file, coordinator chats stay narrowed and executors keep the state-folder guard', async () => {
   const r = await withCoordinator('fix-corrupt')
   const started = await startIn(r, r.coordinator, 'Worker')
   await tick(5)
@@ -287,7 +330,7 @@ test('S7: with a corrupt state file, coordinator chats stay narrowed and executo
   assert.equal(again.service.getState().problems?.[0]?.kind, 'state-reset')
   // Agents that were live when the plugin loaded are classified by their logs at their first call.
   assert.match(await again.host.policy(r.coordinator, 'bash', { command: 'ls' }) ?? '', /may not use bash/)
-  assert.match(await again.host.policy(lead, 'read', creds(again)) ?? '', /may not access the dsh home/)
+  assert.match(await again.host.policy(lead, 'read', ownState(again)) ?? '', /may not access the coordinator plugin's own state folder/)
   assert.ok(r.coordinator.restriction !== undefined && !r.coordinator.visibleTools().includes('bash'))
   // A Session dsh resumes is classified at agent/created.
   r.host.emit('agent/created', { agent: lead })
@@ -296,12 +339,13 @@ test('S7: with a corrupt state file, coordinator chats stay narrowed and executo
   again.host.dispose()
 })
 
-test('S7: the shell check catches the plugin state and the credentials file by find and glob forms', () => {
-  const env = { home: '/Users/u', roots: ['/Users/u/.dsh'], fs: { realpath: (p: string) => p } }
+test('S7: the shell check catches the plugin state by find and glob forms', () => {
+  const env = { home: '/Users/u', roots: ['/Users/u/.dsh/storages/dsh-coordinator'], fs: { realpath: (p: string) => p } }
   assert.ok(textMatch("find ~ -path '*storages/dsh-coordinator/state.json' -exec truncate -s0 {} +", env, []))
   assert.ok(textMatch('rm ~/**/dsh-coordinator/owner.lock', env, []))
-  assert.ok(textMatch('find / -name .credentials.yaml', env, []))
   assert.equal(textMatch('cat ~/dev/dsh-coordinator-plugin/README.md', env, []), undefined)
+  // Decision 70: the credentials file is dsh's; the plugin's text check no longer looks for its name.
+  assert.equal(textMatch('find / -name .credentials.yaml', env, []), undefined)
 })
 
 // --- S8, S9, S10, S11 -------------------------------------------------------------------------------------------
@@ -573,15 +617,6 @@ test('Executor prompt: cleaned and capped, reaches Leads started after the save 
 
 // --- Second hardening pass (sec-rereview.md) ----------------------------------------------------------------------
 
-test('N8: only the bare .credentials.yaml name is caught; project files called credentials.yaml are not', () => {
-  const env = { home: '/Users/u', roots: ['/Users/u/.dsh'], fs: { realpath: (p: string) => p } }
-  assert.ok(textMatch('find ~ -name .credentials.yaml', env, []))
-  assert.ok(textMatch("find / -name '.credentials.yaml'", env, []))
-  assert.equal(textMatch('cat config/credentials.yaml', env, []), undefined)
-  assert.equal(textMatch('cat proj/.credentials.yaml', env, []), undefined)
-  assert.equal(textMatch('cat aws-credentials.yaml', env, []), undefined)
-})
-
 test('N1: a valid state file with its records removed neither unfences former coordinator chats nor unguards executors', async () => {
   const r = await withCoordinator('fix-n1')
   const started = await startIn(r, r.coordinator, 'Worker')
@@ -595,7 +630,7 @@ test('N1: a valid state file with its records removed neither unfences former co
   assert.deepEqual(again.service.getState().coordinators, [])
   // Live agents: classified at their first call.
   assert.match(await again.host.policy(r.coordinator, 'bash', { command: 'ls' }) ?? '', /may only read and search/)
-  assert.match(await again.host.policy(lead, 'read', creds(again)) ?? '', /may not access the dsh home/)
+  assert.match(await again.host.policy(lead, 'read', ownState(again)) ?? '', /may not access the coordinator plugin's own state folder/)
   // Resumed ones: at agent/created.
   const resumed = new FakeAgent(again.host, lead.id, lead.session.header.cwd!, 'standard')
   resumed.log.push(...lead.log)
@@ -1061,7 +1096,7 @@ test('D3: deleting an archived coordinator keeps its chats fenced if the user un
   r.host.emit('agent/created', { agent: chat })
   await tick(5)
   assert.match(await r.host.policy(chat, 'bash', { command: 'ls' }) ?? '', /may only read and search/)
-  assert.match(await r.host.policy(chat, 'read', creds(r)) ?? '', /dsh home/)
+  assert.match(await r.host.policy(chat, 'read', ownState(r)) ?? '', /the coordinator may not access the coordinator plugin's own state folder/)
   r.host.dispose()
 })
 

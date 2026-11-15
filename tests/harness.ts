@@ -32,7 +32,7 @@ export class FakeAgent {
   status: 'idle' | 'running' = 'idle'
   readonly session: { id: string; header: { cwd?: string; agentPreset?: string; origin?: string; parentSession?: string }; append: (type: string, data: unknown) => LogEvent }
   /** Global tool names this agent's preset adds (the fake registry's preset layer). */
-  presetTools: string[] = ['read', 'glob', 'grep', 'bash', 'write', 'edit', 'subagent', 'web_fetch', 'todo_write', 'ask_user_question', 'plugin_manager']
+  presetTools: string[] = ['read', 'glob', 'grep', 'bash', 'write', 'edit', 'subagent', 'web_fetch', 'todo_write', 'ask_user_question', 'plugin_manager', 'skill']
   /** The allow list applied with `ctx.tools.restrict`, if any. */
   restriction: readonly string[] | undefined
   /** The deny list applied with `ctx.tools.restrict`, if any. */
@@ -706,7 +706,7 @@ export function rig(name: string, options: { config?: Record<string, unknown>; h
   options.before?.({ host, stateFile, root, home })
   const config = parseConfig({ noticeDebounceMs: 5, noticeMaxDelayMs: 50, ...options.config }, { DSH_COORDINATOR_THREADS_ROOT: root })
   const service = new ThreadService(host.ctx as never, config, stateFile, options.prompts ?? { coordinator: 'COORD PROMPT', thread: 'THREAD {{threadId}} {{threadTitle}}' },
-    { home, dshHome: join(dir, 'dsh-home'), tempDirs: [join(dir, 'tmp')], pickName: () => 0, ...options.deps })
+    { home, dshHome: join(dir, 'dsh-home'), pickName: () => 0, ...options.deps })
   return { host, service, dir, root, home, stateFile, config }
 }
 

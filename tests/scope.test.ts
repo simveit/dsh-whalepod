@@ -114,12 +114,12 @@ test('coordinator allow list, authority and the home guard know the new and the 
     const events = [{ type: 'turn/start', data: {} }, { type: 'tool/call', data: { name } }]
     assert.equal(turnSawThreadData(events), true, name)
   }
-  // Text-only tools: a brief that mentions ~/.dsh is not a file access, under either name.
-  const env = { home: '/home/u', roots: ['/home/u/.dsh'], temp: ['/tmp'], fs: { realpath: (p: string) => p } }
+  // Text-only tools: a brief that mentions the plugin's state folder is not a file access, under either name.
+  const env = { home: '/home/u', roots: ['/home/u/.dsh/storages/dsh-coordinator'], fs: { realpath: (p: string) => p } }
   for (const name of ['executor_start', 'thread_start', 'executor_send', 'thread_send', 'memory_update', 'memory_read', 'executor_check_later']) {
-    assert.equal(checkCall({ name, args: { brief: 'never read ~/.dsh' }, cwds: ['/w'], askMode: false }, env), undefined, name)
+    assert.equal(checkCall({ name, args: { brief: 'never read ~/.dsh/storages/dsh-coordinator' }, cwds: ['/w'] }, env), undefined, name)
   }
-  assert.notEqual(checkCall({ name: 'bash', args: { command: 'cat ~/.dsh/x' }, cwds: ['/w'], askMode: false }, env), undefined)
+  assert.notEqual(checkCall({ name: 'bash', args: { command: 'cat ~/.dsh/storages/dsh-coordinator/x' }, cwds: ['/w'] }, env), undefined)
 })
 
 test('history labels agent messages from any coordinator session as the coordinator', () => {
@@ -152,6 +152,12 @@ test('prompts render with no leftover placeholder and only the new tool names', 
   assert.match(thread, /coordinator "Coordinator 2"/)
   assert.match(thread, /under the same coordinator/)
   for (const key of ['report', 'peers', 'send', 'memoryRead', 'memory'] as const) assert.match(thread, new RegExp(`\`${TOOL[key]}\``))
+  // Decision 70: skills. The coordinator loads one to brief and names it in the Assignment; the Lead uses it.
+  assert.match(coordinator, /load it with the `skill` tool to see what it asks for, and name it in the Assignment so that the Lead loads and uses it; you read a skill to brief an executor, you do not carry it out/)
+  assert.match(thread, /When your Assignment names a skill, load it with the `skill` tool and work by it/)
+  // The host refuses the plugin's own state folder and nothing else of the dsh home; neither prompt claims more.
+  assert.match(coordinator, /cannot read or write this plugin's own records \(its state folder `storages\/dsh-coordinator` in the dsh home\); the host refuses such tool calls/)
+  for (const text of [coordinator, thread]) assert.doesNotMatch(text, /credentials|refuses tool calls that touch the dsh home/)
   // loadPrompts leaves exactly the per-request placeholders.
   assert.deepEqual([...fillStatic(raw('coordinator.md')).matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]).sort().filter((v, i, a) => a.indexOf(v) === i), ['coordinatorFolder'])
   assert.deepEqual([...new Set([...fillStatic(raw('thread.md')).matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]))].sort(), ['coordinatorTitle', 'threadId', 'threadTitle'])

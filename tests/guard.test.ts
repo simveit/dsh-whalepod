@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { checkThreadFolder, pathMentions, realResolve, refusal, type GuardEnv } from '../src/host/cwd-guard.ts'
+import { checkThreadFolder, FOLDER_PATH_MAX, pathMentions, realResolve, refusal, type GuardEnv } from '../src/host/cwd-guard.ts'
 import { isUserTyped, turnOpenedByUser, turnSawThreadData, userTypedTexts } from '../src/host/authority.ts'
 import { briefWorkingDirectory } from '../src/host/ids.ts'
 
@@ -146,6 +146,58 @@ test('the brief heuristic yields only guarded paths', () => {
   assert.ok(path === undefined || ok(path).ok === false)
   assert.equal(ok(briefWorkingDirectory('Working directory: `~/.ssh`')!).ok, false)
   assert.equal(accepted(ok(briefWorkingDirectory('Working directory: /home/u/dsh-threads/new')!)), true)
+})
+
+test('F5: the folder an Assignment names is bounded before it is looked up, and many line breaks cost nothing', () => {
+  const timed = <T>(label: string, limit: number, run: () => T): T => {
+    const started = performance.now()
+    const out = run()
+    const took = performance.now() - started
+    assert.ok(took < limit, `${label} took ${Math.round(took)} ms`)
+    return out
+  }
+  // The audit's first input: 40 000 characters, nearly all line breaks. The words may follow list marks and numbers
+  // on their line; while those could include a line break, every line start was read on to the end (0.67 s).
+  for (const [label, brief] of [
+    ['line feeds', `a${'\n'.repeat(39_998)}a`],
+    ['carriage returns and line feeds', `a${'\r\n'.repeat(19_999)}a`],
+    ['line separators', `a${' '.repeat(39_998)}a`],
+    ['lines of blanks', '   \n'.repeat(10_000)],
+    ['lines of digits and marks', '12. - * \n'.repeat(4_400)],
+    ['the words on every line, without a colon', 'cwd\n'.repeat(10_000)],
+    ['the words, then stars', `cwd${'*'.repeat(39_990)}`],
+    ['an open backtick before a long path', `cwd: \`/${'a'.repeat(39_990)}`],
+  ] as const) timed(label, 100, () => assert.equal(briefWorkingDirectory(brief), undefined, label))
+  // It reads what it read before, the lines above it left alone.
+  assert.equal(briefWorkingDirectory('Goal: x\n\n\n  - **Working directory**: `/srv/app`\nmore'), '/srv/app')
+  assert.equal(briefWorkingDirectory('1.\n\n2. cwd: ~/dev/notes.'), '~/dev/notes')
+  assert.equal(briefWorkingDirectory('\r\n\r\n3) Working folder:\n/srv/app'), '/srv/app')
+  assert.equal(briefWorkingDirectory(`${'\n'.repeat(30_000)}Working directory: /srv/app`), '/srv/app')
+  assert.equal(briefWorkingDirectory('The working directory: /srv/app'), undefined)
+  // The audit's second input: a path of 38 000 characters below the coordinator's folder, taken from the Assignment.
+  // It cost one lookup per segment (0.94 s on a real folder) and was accepted as a new folder. Now it is refused
+  // before any lookup, with the bound the `cwd` argument has.
+  let lookups = 0
+  const counting: Partial<GuardEnv> = { fs: { realpath: (path) => { lookups++; return env.fs.realpath(path) } } }
+  const long = `/home/u/dsh-threads${'/n'.repeat(19_000)}`
+  const fromBrief = briefWorkingDirectory(`Goal: x\nWorking directory: ${long}\n`)!
+  assert.equal(fromBrief.length, long.length)
+  const refused = timed('a path of 38 000 characters', 50, () => ok(fromBrief, [], counting))
+  assert.equal(refused.ok, false)
+  assert.match((refused as { error: string }).error, /^cwd is 38019 characters long, and a folder path may have at most 1000\./)
+  assert.equal(lookups, 0)
+  assert.equal(FOLDER_PATH_MAX, 1000)
+  assert.equal(ok(`/home/u/dsh-threads/${'n'.repeat(981)}`, [], counting).ok, false)
+  // At the bound a new folder deep below the coordinator's folder is still accepted, and the folder that exists
+  // above it is found with a few dozen lookups, not one per segment.
+  lookups = 0
+  const deep = `/home/u/dsh-threads${'/n'.repeat(490)}`
+  assert.equal(deep.length, 999)
+  assert.equal(accepted(ok(deep, [], counting)), true)
+  assert.ok(lookups < 120, `${lookups} lookups`)
+  // Below a folder the plugin did not make, the same depth still needs the user: the nearest existing folder decides.
+  assert.equal(accepted(ok(`/home/u/dsh-threads/a${'/n'.repeat(480)}`, [], counting)), false)
+  assert.equal(accepted(ok(`/home/u/dsh-threads/a${'/n'.repeat(480)}`, [], { ...counting, pluginFolders: ['/home/u/dsh-threads/a'] })), true)
 })
 
 test('relative and NUL paths are refused with guidance', () => {

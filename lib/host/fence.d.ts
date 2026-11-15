@@ -49,6 +49,13 @@ export declare function neutraliseLookalikes(text: string, pattern: RegExp, neve
  */
 export declare function neutraliseDelimiters(text: string): string;
 /**
+ * An Assignment as its Lead gets it: every look-alike of a block tag (`BLOCK_TAG`) becomes `[removed tag]`, found on
+ * the folded copy like the look-alikes in a coordinator's message or a peer message, and nothing else changes. The
+ * text is the coordinator's own, written for the Lead, so it is not stripped, normalised or capped here: only what
+ * could read as the end of the Assignment or as another block of the plugin goes.
+ */
+export declare function neutraliseBlockTags(text: string): string;
+/**
  * Clean untrusted text for use inside a data block: controls stripped, delimiters neutralised, length capped.
  * @param text - untrusted text.
  * @param max - maximum length.

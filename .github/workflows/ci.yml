@@ -1,9 +1,9 @@
 # Typecheck, test, build and pack on every push and pull request.
 #
-# Untested: this workflow has not run on GitHub yet. It uses plain Node 24 and pnpm 11 instead of the
-# toolchain inside the DeepSeek Harness app; the lockfile and pnpm-workspace.yaml are the same. The build
-# script forces rolldown's WebAssembly binding (NAPI_RS_FORCE_WASI=true), which Linux does not need but
-# which keeps the output identical to a build with the app's Node.
+# It uses plain Node 24 and pnpm 11 instead of the toolchain inside the DeepSeek Harness app; the lockfile
+# and pnpm-workspace.yaml are the same. The build script forces rolldown's WebAssembly binding
+# (NAPI_RS_FORCE_WASI=true), which Linux does not need but which keeps the output identical to a build
+# with the app's Node.
 name: CI
 
 on:

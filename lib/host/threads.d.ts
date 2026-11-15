@@ -50,10 +50,8 @@ export interface ThreadServiceDeps {
     threadIdRandom?: () => string;
     fs?: GuardFs;
     home?: string;
-    /** The active dsh home; the default `~/.dsh` is protected as well. */
+    /** The active dsh home; the folder guard and the state-folder guard count the default `~/.dsh` as one as well. */
     dshHome?: string;
-    /** System temp folders for the Ask me write rule. */
-    tempDirs?: string[];
     now?: () => number;
     /** Timers of look-ins; real timers by default. */
     timers?: Timers;
@@ -168,7 +166,10 @@ export declare class ThreadService implements ThreadOps {
     private readonly narrowed;
     /** Threads that cannot be resumed while auto review is missing (their log says `auto`). */
     private readonly autoGone;
+    /** The tool-call guard's roots: the plugin's own state folder (home-guard.ts). */
     private readonly guardEnv;
+    /** The active dsh home and `~/.dsh`: no coordinator or executor folder may contain one or lie in one (cwd-guard.ts). */
+    private readonly dshHomes;
     /** Settles when the stored coordinator id and thread rows are validated against their Sessions. */
     private validated;
     private readonly ctx;
@@ -479,7 +480,8 @@ export declare class ThreadService implements ThreadOps {
     /** The Resume button of a paused thread (a Remote method; only the owner may call it). */
     resumeThread(threadId: unknown): ThreadInfo;
     /**
-     * Deny tool calls of the coordinator and of every agent in a thread's tree that target the dsh home (home-guard.ts).
+     * Deny tool calls of the coordinator and of every agent in a thread's tree that target the plugin's own state
+     * folder (home-guard.ts); the same hook holds the coordinator allow list and the plugin-tool refusal (guardVerdict).
      * Two hooks with the same check: a `tools/pre-execute` listener, appended after auto review's prepended one, so
      * auto review still sees every call and a denial here wins over its "ask" without showing the user a card; and a
      * monotonic `tools.guard`, which runs after every pre-execute listener and approval and cannot be undone by
@@ -499,6 +501,15 @@ export declare class ThreadService implements ThreadOps {
      */
     private classifyUnknown;
     private guardVerdict;
+    /**
+     * The skills folders dsh reads for a chat besides the user's own: `.dsh/skills` and `.agents/skills` of its project,
+     * which is the nearest folder at or above the working directory that has `.git`, else the working directory itself
+     * (dsh-skill-filesystem `roots`). Only folders that exist count, and never the user-level ones (`skills` in a dsh
+     * home, `~/.agents/skills`), which dsh trusts for every Session.
+     * @returns each folder under the name it has in the project, which is the name the user looks for. Where it leads
+     * (it may be a symlink an Executor Session made) is not returned: that text would reach the coordinator.
+     */
+    private projectSkillRoots;
     /** Count a denial; the coordinator hears once when an Executor Session keeps trying. */
     private countDenial;
     private leadTarget;
@@ -536,7 +547,7 @@ export declare class ThreadService implements ThreadOps {
     private coordinatorAgents;
     /**
      * dsh awaits `agent/created` before it releases queued work, so a candidate is narrowed from its first step: role
-     * prompt, narrowing, the dsh-home guard, and the coordinator tools listed, whose calls run only once the user's first
+     * prompt, narrowing, the state-folder guard, and the coordinator tools listed, whose calls run only once the user's first
      * typed message promoted it (S4). A candidate is a Session whose header cwd is a coordinator Workspace, that is no
      * subagent, no thread lead or member, not being created by the plugin in that place, not archived, and in which the
      * model has not acted yet. One the user already typed into (the window while the plugin loaded) is promoted at once.
@@ -955,6 +966,12 @@ export declare class ThreadService implements ThreadOps {
     private creatingIn;
     /** Remove a folder the plugin just created when it is still empty (never recursive). */
     private removeIfEmpty;
+    /**
+     * The Assignment as the Lead gets it. The coordinator's text goes in as written, except for look-alikes of the
+     * block tags a Lead reads as the plugin's own (the Executor prompt block above all: its tag is a plain hash every
+     * Lead of the coordinator sees, so a Report could carry it to the coordinator and an Assignment could carry an
+     * exact copy of the block on to the next Lead). Cleaned here, at delivery, so a stored Assignment is covered too.
+     */
     private briefText;
     private deliverBrief;
     /**

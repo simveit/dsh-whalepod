@@ -1,5 +1,6 @@
 /**
- * The working-directory guard for `thread_start`, per calling coordinator. Pure apart from the injected filesystem.
+ * The working-directory guard for `thread_start`, per calling coordinator. Pure apart from the injected filesystem
+ * (`nodeGuardFs` is the real one, for the service).
  *
  * A thread's folder decides where it starts and, under `workspace-write`, where it may write. The coordinator
  * agent picks it, and the coordinator reads thread output that may carry planted instructions. So the folder is
@@ -31,12 +32,20 @@
  * coordinator's own chat (see `userTypedTexts` in authority.ts); thread reports, notices, tool results, briefs and
  * other coordinators' chats never count.
  */
+import { readdirSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, join, resolve, sep } from 'node:path'
 
 /** Filesystem access the guard needs; injected so tests run against a fake tree. */
 export interface GuardFs {
   /** Resolve symlinks of an existing path; throws when the path does not exist. */
   realpath(path: string): string
+  /**
+   * The identity of the file or folder an existing path leads to (device and inode), symlinks followed; throws when
+   * the path does not exist. Two spellings of one file give the same value. Without it the real path is the identity.
+   */
+  identity?(path: string): string
+  /** The names in an existing folder; throws when it cannot be read. */
+  list?(path: string): string[]
 }
 
 export interface GuardEnv {
@@ -60,6 +69,19 @@ export interface GuardEnv {
   coordinatorFolders?: readonly string[]
   /** Real paths of the other coordinators' homes: a thread folder inside one is refused (S9). */
   otherHomes?: readonly string[]
+}
+
+/**
+ * The real filesystem, as the thread service uses it. The identity is device and inode; a filesystem that reports no
+ * inode gets the real path instead.
+ */
+export const nodeGuardFs: GuardFs = {
+  realpath: path => realpathSync.native(path),
+  identity: (path) => {
+    const stat = statSync(path, { bigint: true })
+    return stat.ino === 0n ? `path:${realpathSync.native(path)}` : `${stat.dev}:${stat.ino}`
+  },
+  list: path => readdirSync(path),
 }
 
 /** C0 and C1 control characters, line and paragraph separators: never part of a folder path the plugin accepts (S10). */
@@ -89,10 +111,13 @@ export function isWithin(parent: string, child: string): boolean {
   return child === parent || child.startsWith(parent.endsWith(sep) ? parent : parent + sep)
 }
 
-/** `~` and `~/x` to the home folder; other paths unchanged. */
+/**
+ * `~` and `~/x` to the home folder; other paths unchanged. The rest of the spelling is kept as written, as dsh's file
+ * tools keep it: a `..` behind a symlink (`~/link/../x`) is still there for the caller to resolve the way the OS does.
+ */
 export function expandTilde(path: string, home: string): string {
   if (path === '~') return home
-  if (path.startsWith('~/')) return join(home, path.slice(2))
+  if (path.startsWith('~/')) return `${home.endsWith(sep) ? home.slice(0, -1) : home}${path.slice(1)}`
   return path
 }
 
@@ -101,24 +126,53 @@ export function lexical(path: string, home: string): string {
   return resolve(expandTilde(path.normalize('NFC'), home))
 }
 
+/** How many trailing segments `deepestExisting` tries one by one before it halves the rest. */
+const TAIL_PROBES = 4
+
+/**
+ * The longest prefix of a path that exists: the count of its segments and what `probe` returned for it, or undefined
+ * when not even the root answers. `probe` returns undefined (or throws) for a path that does not exist. The last few
+ * prefixes are tried one by one, the usual case of a new file in a new folder. Above them the search halves the
+ * range, because a prefix below a missing one is missing too. So a path with thousands of segments that do not exist
+ * costs a few dozen lookups, not one per segment.
+ */
+export function deepestExisting<T>(parts: readonly string[], probe: (prefix: string) => T | undefined): { depth: number; value: T } | undefined {
+  const at = (depth: number): T | undefined => {
+    try {
+      return probe(sep + parts.slice(0, depth).join(sep))
+    } catch {
+      return undefined
+    }
+  }
+  const floor = Math.max(0, parts.length - TAIL_PROBES)
+  for (let depth = parts.length; depth >= floor; depth--) {
+    const value = at(depth)
+    if (value !== undefined) return { depth, value }
+  }
+  if (floor === 0) return undefined
+  const root = at(0)
+  if (root === undefined) return undefined
+  let low = { depth: 0, value: root }
+  let high = floor
+  while (high - low.depth > 1) {
+    const depth = Math.floor((low.depth + high) / 2)
+    const value = at(depth)
+    if (value === undefined) high = depth
+    else low = { depth, value }
+  }
+  return low
+}
+
 /**
  * Resolve symlinks of the longest existing prefix and append the rest, so a folder that does not exist yet is
  * still compared by where it would really be created.
  */
 export function realResolve(path: string, fs: GuardFs): string {
   const parts = segments(path)
-  for (let i = parts.length; i >= 0; i--) {
-    const prefix = sep + parts.slice(0, i).join(sep)
-    let real: string
-    try {
-      real = fs.realpath(prefix)
-    } catch {
-      continue
-    }
-    const rest = parts.slice(i)
-    return rest.length === 0 ? real : join(real, ...rest)
-  }
-  return path
+  const found = deepestExisting(parts, prefix => fs.realpath(prefix))
+  if (found === undefined) return path
+  const rest = parts.slice(found.depth)
+  return rest.length === 0 ? found.value : join(found.value, ...rest)
 }
 
 /**
@@ -217,6 +271,9 @@ export function pathMentions(text: string): string[] {
   return [...found]
 }
 
+/** Longest folder path taken for an Executor Session, in characters; the `cwd` argument of `executor_start` has the same bound (tools.ts). */
+export const FOLDER_PATH_MAX = 1000
+
 export type GuardResult =
   /** `threads-root`: a new or plugin-made folder below the calling coordinator's folder (the name is historical). */
   | { ok: true; path: string; reason: 'threads-root' | 'allowed' }
@@ -232,6 +289,11 @@ export type GuardResult =
  * the coordinator how to proceed.
  */
 export function checkThreadFolder(requested: string, userTexts: readonly string[], env: GuardEnv): GuardResult {
+  // First, before anything reads the path: the `cwd` argument has this bound in the tool, and a folder taken from the
+  // Assignment's "Working directory:" line (up to the length of an Assignment) gets it here.
+  if (requested.length > FOLDER_PATH_MAX) {
+    return { ok: false, error: `cwd is ${requested.length} characters long, and a folder path may have at most ${FOLDER_PATH_MAX}. Omit cwd to get a new folder under your folder.` }
+  }
   const trimmed = requested.trim()
   if (hasControl(trimmed)) return { ok: false, error: 'cwd contains a control character or a line break; ask the user which folder the work should happen in' }
   const expanded = expandTilde(trimmed, env.home)
@@ -293,18 +355,12 @@ export function checkThreadFolder(requested: string, userTexts: readonly string[
   return { ok: false, confirm: true, path: real, why: lex !== real ? 'symlink' : below ? 'existing' : 'outside' }
 }
 
-/** The longest existing ancestor of a path that does not exist (its real path), or `/`. */
+/**
+ * The longest existing ancestor of a path that does not exist (its real path), or `/`. Found with `deepestExisting`,
+ * so a path of thousands of segments costs a few dozen lookups.
+ */
 function nearestExisting(path: string, fs: GuardFs): string {
-  const parts = segments(path)
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const prefix = sep + parts.slice(0, i).join(sep)
-    try {
-      return fs.realpath(prefix)
-    } catch {
-      // Keep going up.
-    }
-  }
-  return sep
+  return deepestExisting(segments(path).slice(0, -1), prefix => fs.realpath(prefix))?.value ?? sep
 }
 
 /** Whether a resolved path exists (its real path resolves). */

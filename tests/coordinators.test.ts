@@ -45,13 +45,14 @@ test('a New Session in a coordinator Workspace is narrowed from its first step a
   const r = await withCoordinator('adopt')
   const blank = r.host.newSession(r.root)
   await tick(5)
-  // Before any message: role prompt, narrowing and the dsh-home guard; the tools are listed (dsh composes the first
+  // Before any message: role prompt, narrowing and the state-folder guard; the tools are listed (dsh composes the first
   // turn's list before it logs the typed message) but a call runs only after a typed message promoted it (S4).
   assert.ok(r.host.toolsFor(blank.id).includes(TOOL.start))
   assert.match(String((await r.host.call(blank.id, TOOL.start, { title: 'x', assignment: 'y' }))['error']), /not a coordinator yet/)
   assert.match(r.host.sections[0]!.text({ agent: { id: blank.id } }), /^COORD PROMPT\n\n## Permission mode/)
   assert.ok(blank.restriction !== undefined && !blank.visibleTools().includes('bash'))
-  assert.match(await r.host.policy(blank, 'read', { file_path: join(r.dir, 'dsh-home', '.credentials.yaml') }) ?? '', /coordinator may not access the dsh home/)
+  assert.match(await r.host.policy(blank, 'read', { file_path: r.stateFile }) ?? '', /the coordinator may not access the coordinator plugin's own state folder/)
+  assert.equal(await r.host.policy(blank, 'read', { file_path: join(r.dir, 'dsh-home', 'skills', 'review', 'SKILL.md') }), undefined)
   const mark = blank.received.find(m => m.message.id.startsWith('dsh-coordinator:role:c-'))
   assert.ok(mark !== undefined, 'role mark injected')
   assert.equal(mark.how, 'inject')

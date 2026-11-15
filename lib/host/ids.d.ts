@@ -121,7 +121,9 @@ export declare function slugify(title: string, fallback?: string): string;
 export declare function threadDir(root: string, title: string, threadId: string, used: (path: string) => boolean): string;
 /**
  * The absolute folder a brief names on its "Working directory:" line, when the coordinator wrote one there but did
- * not pass it as `cwd` (a real model did exactly that). Only an absolute or `~/` path counts.
+ * not pass it as `cwd` (a real model did exactly that). Only an absolute or `~/` path counts. What may stand before
+ * the words on their line (list marks, numbers, emphasis) never includes a line break: with one in it, every line
+ * start of a text of many line breaks would be read on to the end of the text.
  */
 export declare function briefWorkingDirectory(brief: string): string | undefined;
 export declare function expandHome(path: string): string;

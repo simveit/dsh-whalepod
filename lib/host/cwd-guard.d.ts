@@ -2,6 +2,13 @@
 export interface GuardFs {
     /** Resolve symlinks of an existing path; throws when the path does not exist. */
     realpath(path: string): string;
+    /**
+     * The identity of the file or folder an existing path leads to (device and inode), symlinks followed; throws when
+     * the path does not exist. Two spellings of one file give the same value. Without it the real path is the identity.
+     */
+    identity?(path: string): string;
+    /** The names in an existing folder; throws when it cannot be read. */
+    list?(path: string): string[];
 }
 export interface GuardEnv {
     home: string;
@@ -25,14 +32,33 @@ export interface GuardEnv {
     /** Real paths of the other coordinators' homes: a thread folder inside one is refused (S9). */
     otherHomes?: readonly string[];
 }
+/**
+ * The real filesystem, as the thread service uses it. The identity is device and inode; a filesystem that reports no
+ * inode gets the real path instead.
+ */
+export declare const nodeGuardFs: GuardFs;
 /** Whether a path contains a control character or a line break (S10). */
 export declare function hasControl(path: string): boolean;
 /** Whether `child` is `parent` or below it (both absolute, normalised). */
 export declare function isWithin(parent: string, child: string): boolean;
-/** `~` and `~/x` to the home folder; other paths unchanged. */
+/**
+ * `~` and `~/x` to the home folder; other paths unchanged. The rest of the spelling is kept as written, as dsh's file
+ * tools keep it: a `..` behind a symlink (`~/link/../x`) is still there for the caller to resolve the way the OS does.
+ */
 export declare function expandTilde(path: string, home: string): string;
 /** Lexically normalised absolute form: `~` expanded, `.`/`..` collapsed, no trailing slash, NFC. */
 export declare function lexical(path: string, home: string): string;
+/**
+ * The longest prefix of a path that exists: the count of its segments and what `probe` returned for it, or undefined
+ * when not even the root answers. `probe` returns undefined (or throws) for a path that does not exist. The last few
+ * prefixes are tried one by one, the usual case of a new file in a new folder. Above them the search halves the
+ * range, because a prefix below a missing one is missing too. So a path with thousands of segments that do not exist
+ * costs a few dozen lookups, not one per segment.
+ */
+export declare function deepestExisting<T>(parts: readonly string[], probe: (prefix: string) => T | undefined): {
+    depth: number;
+    value: T;
+} | undefined;
 /**
  * Resolve symlinks of the longest existing prefix and append the rest, so a folder that does not exist yet is
  * still compared by where it would really be created.
@@ -68,6 +94,8 @@ export declare function coordinatorFolderProblem(path: string, env: Pick<GuardEn
  * backticks (which may contain spaces). Trailing punctuation is dropped.
  */
 export declare function pathMentions(text: string): string[];
+/** Longest folder path taken for an Executor Session, in characters; the `cwd` argument of `executor_start` has the same bound (tools.ts). */
+export declare const FOLDER_PATH_MAX = 1000;
 export type GuardResult = 
 /** `threads-root`: a new or plugin-made folder below the calling coordinator's folder (the name is historical). */
 {

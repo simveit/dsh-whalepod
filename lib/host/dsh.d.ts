@@ -129,7 +129,7 @@ export interface UserQuestions {
 export interface WorkingDirectory {
     get(session: Session): string;
 }
-/** One tool call in dsh's pipeline (`tools/pre-execute`, guards): only the members the dsh-home guard reads. */
+/** One tool call in dsh's pipeline (`tools/pre-execute`, guards): only the members the plugin's tool-call guard reads. */
 export interface ToolExecution {
     readonly name: string;
     readonly arguments: unknown;
