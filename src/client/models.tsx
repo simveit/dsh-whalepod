@@ -10,12 +10,15 @@
  * composer, and writes through `session.selectModel`, which also changes the model new Sessions of the whole dsh
  * follow. So the rows use native selects in the look of the page's inputs, with dsh's own words from its `model`
  * dictionary when that is loaded (permission.tsx does the same for the permission picker).
+ *
+ * The two selects are `ModelPicker`. The New coordinator form (new-coordinator.tsx) shows the same pickers before a
+ * coordinator exists; there a choice is kept in the form and sent with Create.
  */
 import { useEffect, useId, useRef, useState } from 'react'
 import type { CoordinatorInfo, ModelChoice, ModelChoices, ModelSettingState } from '../types.ts'
 import { IconCheck, IconModel } from './icons.tsx'
 import type { Translate } from './locales.ts'
-import { chatRunsOn, effortOptions, listedModel, modelName, optionValue, withEffort, withModel } from './model-view.ts'
+import { chatRunsOn, effortOptions, listedModel, modelName, optionLabel, optionValue, withEffort, withModel, type ModelList } from './model-view.ts'
 import { dshCopy } from './permission.tsx'
 import { errorText } from './store.ts'
 import { useSavedFlag } from './ui.tsx'
@@ -23,8 +26,68 @@ import { useSavedFlag } from './ui.tsx'
 /** The option value of "Not set" and "Same as coordinator". */
 const NONE = ''
 
-type Kind = 'coordinator' | 'executor'
-type ListState = 'loading' | 'failed' | 'ready'
+export type ModelKind = 'coordinator' | 'executor'
+export type ModelListState = 'loading' | 'failed' | 'ready'
+type Kind = ModelKind
+type ListState = ModelListState
+
+/**
+ * The selects of one model choice: dsh's models grouped by provider, with "Not set" (coordinator) or "Same as
+ * coordinator" (executors) first, and the reasoning efforts of the chosen model when it has any. An option names its
+ * provider too, so the closed select shows which provider the chosen model comes from. A chosen model the
+ * list does not have (any more) is shown, but cannot be picked again. `onChange` gets the new choice, or undefined
+ * for the first option; the caller keeps it. Rendered inside a `.dco-model-controls` box.
+ */
+export function ModelPicker({ kind, choices, value, list, disabled, busy = false, t, dsh, id, describedBy, testId, onChange }: {
+  kind: ModelKind; choices: ModelList | undefined; value: ModelChoice | undefined; list: ModelListState; t: Translate; dsh: Translate | undefined
+  /** Whatever else disables the selects; they are disabled anyway until the list is loaded. */
+  disabled: boolean
+  busy?: boolean
+  /** The id of the model select, for its label. */
+  id: string
+  describedBy?: string | undefined
+  /** Prefix of the selects' test ids (`<testId>-select`, `<testId>-effort`). */
+  testId: string
+  onChange: (next: ModelChoice | undefined) => void
+}) {
+  const copy = dshCopy(dsh, t)
+  const found = listedModel(choices, value)
+  const missing = value !== undefined && found === undefined && list === 'ready'
+  const efforts = found === undefined ? [] : effortOptions(found.model, copy('effort.providerDefault', 'models.effort.default'))
+  const effort = value?.reasoningEffort ?? found?.model.defaultEffort ?? NONE
+  const effortGone = efforts.length > 0 && !efforts.some(e => e.value === effort)
+  const off = disabled || list !== 'ready'
+  const groupName = (group: ModelList['groups'][number]): string => {
+    // dsh names the account provider in the user's language.
+    const account = group.id === 'deepseek-account' ? dsh?.('provider.account') : undefined
+    return account !== undefined && account !== '' && !account.endsWith('provider.account') ? account : group.name
+  }
+  const pickModel = (option: string) => {
+    if (option === NONE) { onChange(undefined); return }
+    const next = withModel(choices, option, value)
+    if (next !== undefined) onChange(next)
+  }
+  return <>
+    <select id={id} className="dco-input dco-select" data-testid={`${testId}-select`} aria-describedby={describedBy}
+      value={value === undefined ? NONE : optionValue(value.provider, value.model)}
+      disabled={off} aria-busy={busy || list === 'loading' || undefined}
+      onChange={(event) => { pickModel(event.currentTarget.value) }}>
+      <option value={NONE}>{list === 'loading' && value === undefined ? copy('trigger.loading', 'models.loading')
+        : t(kind === 'coordinator' ? 'models.coordinator.unset' : 'models.executor.same')}</option>
+      {value !== undefined && found === undefined && <option value={optionValue(value.provider, value.model)} disabled>
+        {missing ? t('models.option.unavailable', { name: `${value.provider}/${value.model}` }) : `${value.provider}/${value.model}`}</option>}
+      {(choices?.groups ?? []).map(group => <optgroup key={group.id} label={groupName(group)}>
+        {group.models.map(model => <option key={model.id} value={optionValue(group.id, model.id)}>{optionLabel(model.name, groupName(group))}</option>)}
+      </optgroup>)}
+    </select>
+    {value !== undefined && efforts.length > 0 && <select className="dco-input dco-select" data-testid={`${testId}-effort`}
+      aria-label={copy('menu.effort', 'models.effort')} value={effort}
+      disabled={off} onChange={(event) => { onChange(withEffort(value, event.currentTarget.value)) }}>
+      {effortGone && <option value={effort} disabled>{t('models.option.unavailable', { name: effort })}</option>}
+      {efforts.map(option => <option key={option.value} value={option.value}>{option.name}</option>)}
+    </select>}
+  </>
+}
 
 export interface ModelSettingsProps {
   coordinator: CoordinatorInfo
@@ -85,7 +148,6 @@ function ModelRow({ kind, coordinator, choices, state, list, t, dsh, onSet, onRe
 
   const archived = coordinator.archived === true
   const stored = local === undefined ? saved : local.value
-  const found = listedModel(choices, stored)
   const set = async (next: ModelChoice | undefined) => {
     if (busy) return
     setBusy(true); setError(undefined); setJustSaved(false); setLocal({ value: next })
@@ -98,22 +160,6 @@ function ModelRow({ kind, coordinator, choices, state, list, t, dsh, onSet, onRe
     } finally {
       setBusy(false)
     }
-  }
-  const pickModel = (value: string) => {
-    if (value === NONE) { void set(undefined); return }
-    const next = withModel(choices, value, stored)
-    if (next !== undefined) void set(next)
-  }
-
-  // The stored model when the list does not have it (any more): shown, but it cannot be picked again.
-  const missing = stored !== undefined && found === undefined && list === 'ready'
-  const efforts = found === undefined ? [] : effortOptions(found.model, copy('effort.providerDefault', 'models.effort.default'))
-  const effort = stored?.reasoningEffort ?? found?.model.defaultEffort ?? NONE
-  const effortGone = efforts.length > 0 && !efforts.some(e => e.value === effort)
-  const groupName = (group: ModelChoices['groups'][number]): string => {
-    // dsh names the account provider in the user's language.
-    const account = group.id === 'deepseek-account' ? dsh?.('provider.account') : undefined
-    return account !== undefined && account !== '' && !account.endsWith('provider.account') ? account : group.name
   }
 
   // What applies now, when it is not what the select shows: nothing set, a stored model dsh no longer offers or could
@@ -143,24 +189,8 @@ function ModelRow({ kind, coordinator, choices, state, list, t, dsh, onSet, onRe
       <label className="dco-setting-title" htmlFor={ids.field}>{t(`models.${kind}.label`)}</label>
       <p className="dco-setting-desc" id={ids.help}>{t(`models.${kind}.hint`)}</p>
       <div className="dco-model-controls">
-        <select id={ids.field} className="dco-input dco-select" data-testid={`dco-model-${kind}-select`} aria-describedby={ids.help}
-          value={stored === undefined ? NONE : optionValue(stored.provider, stored.model)}
-          disabled={archived || busy || list !== 'ready'} aria-busy={busy || list === 'loading' || undefined}
-          onChange={(event) => { pickModel(event.currentTarget.value) }}>
-          <option value={NONE}>{list === 'loading' && stored === undefined ? copy('trigger.loading', 'models.loading')
-            : t(kind === 'coordinator' ? 'models.coordinator.unset' : 'models.executor.same')}</option>
-          {stored !== undefined && found === undefined && <option value={optionValue(stored.provider, stored.model)} disabled>
-            {missing ? t('models.option.unavailable', { name: `${stored.provider}/${stored.model}` }) : `${stored.provider}/${stored.model}`}</option>}
-          {(choices?.groups ?? []).map(group => <optgroup key={group.id} label={groupName(group)}>
-            {group.models.map(model => <option key={model.id} value={optionValue(group.id, model.id)}>{model.name}</option>)}
-          </optgroup>)}
-        </select>
-        {stored !== undefined && efforts.length > 0 && <select className="dco-input dco-select" data-testid={`dco-model-${kind}-effort`}
-          aria-label={copy('menu.effort', 'models.effort')} value={effort}
-          disabled={archived || busy || list !== 'ready'} onChange={(event) => { void set(withEffort(stored, event.currentTarget.value)) }}>
-          {effortGone && <option value={effort} disabled>{t('models.option.unavailable', { name: effort })}</option>}
-          {efforts.map(option => <option key={option.value} value={option.value}>{option.name}</option>)}
-        </select>}
+        <ModelPicker kind={kind} choices={choices} value={stored} list={list} disabled={archived || busy} busy={busy} t={t} dsh={dsh}
+          id={ids.field} describedBy={ids.help} testId={`dco-model-${kind}`} onChange={(next) => { void set(next) }} />
         <span role="status">{justSaved && !busy && <span className="dco-saved"><IconCheck size={14} />{t('prompt.saved')}</span>}</span>
       </div>
       {note !== undefined && <p className="dco-model-note" data-tone={note.tone} role={note.tone === 'warning' ? 'status' : undefined}

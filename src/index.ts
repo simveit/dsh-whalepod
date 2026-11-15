@@ -11,7 +11,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { principalOf, Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult,
-  DeleteCoordinatorRequest, DeleteCoordinatorResult, HostProblem, ListModelChoicesRequest, ModelChoices, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, SetModelRequest, ThreadInfo, ThreadPermissionState,
+  DeleteCoordinatorRequest, DeleteCoordinatorResult, HostProblem, ListModelChoicesRequest, ModelChoices, NewCoordinatorSetup, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, SetModelRequest, ThreadInfo, ThreadPermissionState,
 } from './types.ts'
 import { HOST_INJECT, type HostContext } from './host/dsh.ts'
 import { type CoordinatorConfig } from './host/ids.ts'
@@ -193,7 +193,22 @@ export default class CoordinatorService extends TypertRemoteService {
     return this.service().ensureCoordinator(value ?? {})
   }
 
-  /** New coordinator: its own folder below the base, or `home` from the folder picker; `name` when the user chose one. */
+  /**
+   * What the New coordinator form starts from: a suggested name from the built-in list, the models dsh offers, and the
+   * default model for the coordinator and for its executors when dsh offers it. Owner only.
+   */
+  @Remote
+  async newCoordinatorSetup(signal: AbortSignal): Promise<NewCoordinatorSetup> {
+    signal.throwIfAborted()
+    requireOwner(this.ctx)
+    return this.service().newCoordinatorSetup()
+  }
+
+  /**
+   * New coordinator: its own folder below the base, or `home` from the folder picker; `name` when the user chose one,
+   * else the suggested name; the two models the form's pickers showed (none when left out). A refused value creates
+   * nothing.
+   */
   @Remote
   async createCoordinator(request: CreateCoordinatorRequest | undefined, signal: AbortSignal): Promise<EnsureCoordinatorResult> {
     const [value, abort] = split(request, signal)

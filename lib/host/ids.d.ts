@@ -73,12 +73,25 @@ export declare function checkCoordinatorName(raw: unknown): {
  */
 export declare function nameKey(name: string): string;
 /**
- * A random name no live coordinator uses (case-insensitive), from the built-in list; when all are used, a listed name
- * with a number (`Noether 2`).
+ * The names the automatic naming chooses from: the names of the built-in list no live coordinator uses
+ * (case-insensitive); when all are used, the listed names with the lowest number that leaves one free (`Noether 2`).
+ * Empty only when every name up to 9999 is used.
+ * @param used - names of the live coordinators.
+ */
+export declare function freeNames(used: Iterable<string>): string[];
+/**
+ * A random name no live coordinator uses, one of `freeNames`.
  * @param used - names of the live coordinators.
  * @param random - picks an index below `n`; injected for tests.
  */
 export declare function freeName(used: Iterable<string>, random?: (n: number) => number): string;
+/**
+ * Whether `name` is a name the automatic naming could give right now, letter for letter (one of `freeNames`). The New
+ * coordinator form sends back the name the host suggested; only such a name is taken as a suggestion. Anything else
+ * (a typed name, a taken name, a number the naming would not reach, a long text) is as if nothing had been suggested,
+ * so a suggestion is never a way around `checkCoordinatorName`.
+ */
+export declare function isFreeName(name: string, used: Iterable<string>): boolean;
 /**
  * The folder slug of a name: the list entry's slug (with the number of a numbered name, `li-bai-2`), else the name's
  * own ASCII letters and digits, else empty (a name with no ASCII letters that is not on the list).

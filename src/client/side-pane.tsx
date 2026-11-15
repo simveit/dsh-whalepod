@@ -384,7 +384,7 @@ export interface PaneDeps {
   t: Translate
   /** Same actions as the page: they open Sessions through the client catalog and skip fake Session ids. */
   openSession(sessionId: string): Promise<void>
-  openCoordinator(coordinatorId?: string): Promise<void>
+  openCoordinator(coordinatorId: string): Promise<void>
   goHome(): void
   pickFolder(): Promise<PickResult>
   setCoordinatorFolder(coordinatorId: string, path: string): Promise<void>

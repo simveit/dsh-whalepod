@@ -304,7 +304,10 @@ export interface ThreadPermissionState {
   effective: ThreadPermission
 }
 
-/** Request of `coordinator/ensureCoordinator`: without an id the last used coordinator, with none a new one. */
+/**
+ * Request of `coordinator/ensureCoordinator`: without an id the last used coordinator, with none a new one, which gets
+ * an automatic name and no model settings. The page always sends an id; a first coordinator is made in its setup step.
+ */
 export interface EnsureCoordinatorRequest {
   coordinatorId?: string
 }
@@ -316,12 +319,36 @@ export interface EnsureCoordinatorResult {
 }
 
 /**
- * Request of `coordinator/createCoordinator`: `home` from the folder picker, else `<base>/coordinator-<name>`; `name`
- * as the user typed it on the page (checked like a rename), else a free name from the built-in list.
+ * Request of `coordinator/createCoordinator`, as the New coordinator form sends it. `home` from the folder picker, else
+ * `<base>/coordinator-<name>`. `name` as the user typed it (checked like a rename); without one, `suggestedName`, the
+ * name the form showed as its suggestion (`NewCoordinatorSetup.name`), while that is still free, else another free
+ * name from the built-in list. `coordinatorModel` and `executorModel` are what the form's pickers showed: a model from
+ * `NewCoordinatorSetup.groups`, or `null` or left out for none ("Not set", "Same as coordinator"). The host adds no
+ * default of its own: a model is set only when the request names it. A value the host refuses creates nothing.
  */
 export interface CreateCoordinatorRequest {
   home?: string
   name?: string
+  suggestedName?: string
+  coordinatorModel?: ModelChoice | null
+  executorModel?: ModelChoice | null
+}
+
+/**
+ * Result of `coordinator/newCoordinatorSetup`: what the New coordinator form starts from. Nothing is reserved; the
+ * form sends its values back with `createCoordinator`, which checks them again.
+ */
+export interface NewCoordinatorSetup {
+  /** A free name from the built-in list: what the coordinator is called when the user types none. */
+  name: string
+  /** dsh's models by provider, as in `ModelChoices`. */
+  groups: ModelChoices['groups']
+  /** True when the list of at least one provider could not be loaded, so models may be missing. */
+  partial: boolean
+  /** The default for the coordinator model picker; absent when dsh does not offer it (the picker starts on "Not set"). */
+  coordinatorModel?: ModelChoice
+  /** The default for the executor model picker; absent when dsh does not offer it ("Same as coordinator"). */
+  executorModel?: ModelChoice
 }
 
 /** Request of `coordinator/setCoordinatorFolder`; returns the updated `CoordinatorInfo`. */

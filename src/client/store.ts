@@ -9,7 +9,8 @@
  * tab is hidden, and publishes a new snapshot only when `revision` or `epoch` changes or the error state flips, so
  * React re-renders nothing on an unchanged poll.
  */
-import type { CoordinatorInfo, CoordinatorState, ThreadInfo, ThreadStatus } from '../types.ts'
+import type { CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, ModelChoice, NewCoordinatorSetup, ThreadInfo, ThreadStatus } from '../types.ts'
+import { formModel } from './model-view.ts'
 import type { ClientState } from './remote.ts'
 import { SourceError, type CoordinatorSource } from './source.ts'
 
@@ -290,14 +291,91 @@ export function newNameProblem(name: string, coordinators: readonly Pick<Coordin
 
 /**
  * The inline form that is open before a coordinator is created: where the coordinator goes (the default place, a
- * folder from the picker, or a path the user types) and the name typed so far. The page holds it, not the form,
- * because the form is taken down while the folder picker is open and built again for the folder that was picked.
+ * folder from the picker, or a path the user types), the name typed so far, what the host proposed when the form
+ * opened (`setup`: the suggested name, dsh's models and the default choices; absent until it is loaded), and the two
+ * model pickers once the user touched them (`null` for "Not set" or "Same as coordinator"). The page holds it, not
+ * the form, because the form is taken down while the folder picker is open and built again for the folder that was
+ * picked: the suggested name and the choices are the same ones then.
  */
-export type NewCoordinatorDraft = ({ kind: 'default' } | { kind: 'picked'; home: string } | { kind: 'typed' }) & { name: string }
+export type NewCoordinatorDraft = ({ kind: 'default' } | { kind: 'picked'; home: string } | { kind: 'typed' }) & {
+  name: string
+  setup?: NewCoordinatorSetup
+  coordinatorModel?: ModelChoice | null
+  executorModel?: ModelChoice | null
+}
 
-/** The form for another place (New coordinator, the picker's folder, Type a path): the name already typed stays. */
-export function newDraftAt(current: Pick<NewCoordinatorDraft, 'name'> | undefined, place: { kind: 'default' } | { kind: 'picked'; home: string } | { kind: 'typed' }): NewCoordinatorDraft {
-  return { ...place, name: current?.name ?? '' }
+/** The host's `nameKey` (ids.ts): the key two coordinator names are compared by. Kept equal to it by a test. */
+export function nameKeyOf(name: string): string {
+  return name.normalize('NFKC')
+    .replace(/[\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/gu, '')
+    .replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+/**
+ * Whether the form keeps showing a suggested name when the host's proposal is loaded again: while no live coordinator
+ * has that name, compared as the host compares names. A name that was taken meanwhile gives way to the new proposal.
+ */
+export function suggestionStillFree(shown: string | undefined, coordinators: readonly Pick<CoordinatorInfo, 'name' | 'archived'>[]): shown is string {
+  if (shown === undefined || shown === '') return false
+  const key = nameKeyOf(shown)
+  return !coordinators.some(c => c.archived !== true && typeof c.name === 'string' && nameKeyOf(c.name) === key)
+}
+
+/**
+ * The proposal the form shows after the host's proposal was loaded again (dsh's models changed, the window came back
+ * to the front): the new lists and defaults, with the suggested name the form already shows. The host picks a random
+ * free name on every call, and the name in the field must not change under the user while the form is open; it gives
+ * way only when a coordinator took it meanwhile.
+ */
+export function reloadedSetup(shown: NewCoordinatorSetup | undefined, loaded: NewCoordinatorSetup, coordinators: readonly Pick<CoordinatorInfo, 'name' | 'archived'>[]): NewCoordinatorSetup {
+  return suggestionStillFree(shown?.name, coordinators) ? { ...loaded, name: shown!.name } : loaded
+}
+
+/** The form for another place (New coordinator, the picker's folder, Type a path): what was typed and chosen so far stays. */
+export function newDraftAt(current: Omit<NewCoordinatorDraft, 'kind' | 'home'> | undefined, place: { kind: 'default' } | { kind: 'picked'; home: string } | { kind: 'typed' }): NewCoordinatorDraft {
+  return {
+    ...place, name: current?.name ?? '',
+    ...(current?.setup === undefined ? {} : { setup: current.setup }),
+    ...(current?.coordinatorModel === undefined ? {} : { coordinatorModel: current.coordinatorModel }),
+    ...(current?.executorModel === undefined ? {} : { executorModel: current.executorModel }),
+  }
+}
+
+/**
+ * What Create sends for a draft (`typedPath`: the path field of the "Type a path" form). A typed name goes as `name`;
+ * with an empty field the suggested name goes as `suggestedName`, which the host uses while it is still free. The
+ * models are the ones the pickers show: the user's choice, else the proposed default, and `null` for the empty first
+ * option. Without the host's proposal (it could not be loaded; the form does not create while it is loading) the
+ * pickers show nothing to choose from, so neither a suggestion nor a model is sent: the host then picks the name and
+ * sets no model.
+ */
+export function newCoordinatorRequest(draft: NewCoordinatorDraft, typedPath = ''): CreateCoordinatorRequest {
+  const home = draft.kind === 'typed' ? typedPath.trim() : draft.kind === 'picked' ? draft.home : undefined
+  const name = draft.name.trim()
+  const setup = draft.setup
+  return {
+    ...(home === undefined ? {} : { home }),
+    ...(name !== '' ? { name } : setup === undefined || setup.name === '' ? {} : { suggestedName: setup.name }),
+    ...(setup === undefined ? {} : {
+      coordinatorModel: formModel(draft.coordinatorModel, setup.coordinatorModel) ?? null,
+      executorModel: formModel(draft.executorModel, setup.executorModel) ?? null,
+    }),
+  }
+}
+
+/**
+ * Create, then open the new coordinator's chat. A failed create throws, and nothing was made. Once the coordinator
+ * exists, a chat that cannot be opened is reported as `openError` instead: the caller closes the form either way, so
+ * a second Create cannot make a second coordinator.
+ */
+export async function createThenOpen<T>(create: () => Promise<T>, open: (made: T) => Promise<void>): Promise<{ openError?: string }> {
+  const made = await create()
+  try {
+    await open(made)
+    return {}
+  } catch (error) {
+    return { openError: errorText(error) }
+  }
 }
 
 /** What the Memory row holds: the user's text, and the host text and memory revision that text is based on. */

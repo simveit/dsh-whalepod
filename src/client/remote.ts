@@ -12,7 +12,7 @@ import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult, PingResult,
-  DeleteCoordinatorRequest, DeleteCoordinatorResult, ListModelChoicesRequest, ModelChoices, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult,
+  DeleteCoordinatorRequest, DeleteCoordinatorResult, ListModelChoicesRequest, ModelChoices, NewCoordinatorSetup, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult,
   SetExecutorPromptRequest, SetModelRequest, ThreadInfo, ThreadPermissionState,
 } from '../types.ts'
 
@@ -128,7 +128,11 @@ const permissionModeSchema = (): z.ZodType<string> => (permissionMode ??= z.enum
 let ensureRequest: z.ZodType<EnsureCoordinatorRequest> | undefined
 const ensureRequestSchema = (): z.ZodType<EnsureCoordinatorRequest> => (ensureRequest ??= z.object({ coordinatorId: z.string().optional() }))
 let createRequest: z.ZodType<CreateCoordinatorRequest> | undefined
-const createRequestSchema = (): z.ZodType<CreateCoordinatorRequest> => (createRequest ??= z.object({ home: z.string().optional(), name: z.string().optional() }))
+// A model the form leaves out gets the host's default; null says "none".
+const createRequestSchema = (): z.ZodType<CreateCoordinatorRequest> => (createRequest ??= z.object({
+  home: z.string().optional(), name: z.string().optional(), suggestedName: z.string().optional(),
+  coordinatorModel: modelChoiceSchema().nullable().optional(), executorModel: modelChoiceSchema().nullable().optional(),
+}) as z.ZodType<CreateCoordinatorRequest>)
 let ensureResult: z.ZodType<EnsureCoordinatorResult> | undefined
 const ensureResultSchema = (): z.ZodType<EnsureCoordinatorResult> => (ensureResult ??= z.object({ coordinatorId: z.string(), sessionId: z.string() }))
 let folderRequest: z.ZodType<SetCoordinatorFolderRequest> | undefined
@@ -144,22 +148,31 @@ const memoryEnabledRequestSchema = (): z.ZodType<SetCoordinatorMemoryEnabledRequ
 let modelChoicesRequest: z.ZodType<ListModelChoicesRequest> | undefined
 const modelChoicesRequestSchema = (): z.ZodType<ListModelChoicesRequest> => (modelChoicesRequest ??= z.object({ coordinatorId: z.string() }))
 const modelSettingSchema = () => z.object({ stored: modelChoiceSchema().optional(), effective: modelChoiceSchema().optional(), available: z.boolean(), unchecked: z.boolean().optional() })
-let modelChoices: z.ZodType<ModelChoices> | undefined
-const modelChoicesSchema = (): z.ZodType<ModelChoices> => (modelChoices ??= z.object({
-  groups: z.array(z.object({
+const modelGroupsSchema = () => z.array(z.object({
+  id: z.string(),
+  name: z.string(),
+  models: z.array(z.object({
     id: z.string(),
     name: z.string(),
-    models: z.array(z.object({
-      id: z.string(),
-      name: z.string(),
-      efforts: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
-      defaultEffort: z.string().optional(),
-    })),
+    efforts: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
+    defaultEffort: z.string().optional(),
   })),
+}))
+let modelChoices: z.ZodType<ModelChoices> | undefined
+const modelChoicesSchema = (): z.ZodType<ModelChoices> => (modelChoices ??= z.object({
+  groups: modelGroupsSchema(),
   partial: z.boolean(),
   coordinator: modelSettingSchema(),
   executors: modelSettingSchema(),
 }) as z.ZodType<ModelChoices>)
+let newSetup: z.ZodType<NewCoordinatorSetup> | undefined
+const newSetupSchema = (): z.ZodType<NewCoordinatorSetup> => (newSetup ??= z.object({
+  name: z.string(),
+  groups: modelGroupsSchema(),
+  partial: z.boolean(),
+  coordinatorModel: modelChoiceSchema().optional(),
+  executorModel: modelChoiceSchema().optional(),
+}) as z.ZodType<NewCoordinatorSetup>)
 let setModelRequest: z.ZodType<SetModelRequest> | undefined
 const setModelRequestSchema = (): z.ZodType<SetModelRequest> => (setModelRequest ??= z.object({ coordinatorId: z.string(), model: modelChoiceSchema().nullable() }) as z.ZodType<SetModelRequest>)
 let renameRequest: z.ZodType<RenameCoordinatorRequest> | undefined
@@ -239,9 +252,17 @@ export const TYPERT_REMOTE = createTypertRemoteInfo({
       cancellation: { parameter: 'signal' },
       result: { mode: 'strict', typeSymbol: `${PACKAGE}#EnsureCoordinatorResult`, create: ensureResultSchema },
     },
+    'coordinator/newCoordinatorSetup': {
+      service: 'coordinator',
+      description: 'What the New coordinator form starts from: a suggested name, the models dsh offers, and the default model choices.',
+      invocation: { kind: 'direct' },
+      parameters: [],
+      cancellation: { parameter: 'signal' },
+      result: { mode: 'strict', typeSymbol: `${PACKAGE}#NewCoordinatorSetup`, create: newSetupSchema },
+    },
     'coordinator/createCoordinator': {
       service: 'coordinator',
-      description: 'Create a new coordinator with its own home folder and chat Session.',
+      description: 'Create a new coordinator with its own home folder and chat Session, under the name and on the models the form chose.',
       invocation: { kind: 'direct' },
       parameters: [requestParameter('CreateCoordinatorRequest', createRequestSchema, true)],
       cancellation: { parameter: 'signal' },
@@ -410,6 +431,7 @@ export interface CoordinatorRemote {
   ping(signal?: AbortSignal): Promise<RemoteResult<PingResult>>
   getState(signal?: AbortSignal): Promise<RemoteResult<ClientState>>
   ensureCoordinator(request: EnsureCoordinatorRequest | undefined, signal?: AbortSignal): Promise<RemoteResult<EnsureCoordinatorResult>>
+  newCoordinatorSetup(signal?: AbortSignal): Promise<RemoteResult<NewCoordinatorSetup>>
   createCoordinator(request: CreateCoordinatorRequest | undefined, signal?: AbortSignal): Promise<RemoteResult<EnsureCoordinatorResult>>
   setCoordinatorFolder(request: SetCoordinatorFolderRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
   setExecutorPrompt(request: SetExecutorPromptRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>

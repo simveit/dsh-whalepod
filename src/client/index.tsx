@@ -19,7 +19,7 @@ import { TYPERT_REMOTE, type CoordinatorRemote } from './remote.ts'
 import { CoordinatorRowHover, CoordinatorRowTrailing } from './row-decor.tsx'
 import { mountThreadsPane } from './side-pane.tsx'
 import { fakeSource, remoteSource, wantsFakeSource } from './source.ts'
-import { CoordinatorStore, errorText } from './store.ts'
+import { CoordinatorStore, createThenOpen, errorText } from './store.ts'
 import { CSS, STYLE_ID } from './styles.ts'
 
 /** Same id for the sidebar entry and the main panel key: the sidebar opens the panel whose key matches. */
@@ -191,12 +191,13 @@ export async function apply(ctx: ClientContext): Promise<void> {
         store.refresh()
         await openReal(sessionId)
       },
-      newCoordinator: async (options) => {
-        const { coordinatorId, sessionId } = await store.source.createCoordinator(options)
-        store.select(coordinatorId)
+      newCoordinatorSetup: () => store.source.newCoordinatorSetup(),
+      newCoordinator: options => createThenOpen(async () => {
+        const made = await store.source.createCoordinator(options)
+        store.select(made.coordinatorId)
         store.refresh()
-        await openReal(sessionId)
-      },
+        return made
+      }, made => openReal(made.sessionId)),
       // Development builds with the fake source can simulate a picker that never answers (a browser on another computer).
       pickFolder: () => __DSH_COORDINATOR_DEV__ && store.source.kind === 'fake' && fakeScenario() === 'slow-pick'
         ? new Promise<PickResult>(() => {}) : pickFolder(uiCtx),

@@ -2,6 +2,26 @@
 
 All notable changes to this plugin are listed here. Versions follow [Semantic Versioning](https://semver.org/). The DeepSeek Harness versions a release runs on are in `engines.dsh` in `package.json`.
 
+## 0.5.0 - 2026-11-15
+
+### Added
+
+- New coordinator opens a setup step before anything is created. It shows the name, the model for the coordinator and the model for its Executor Sessions, already filled in. Nothing exists until you press Create, and the chat opens only then. Choose folder... and Type a path open the same step for the folder you gave.
+- The name field shows a suggested name from the built-in list in grey. Leave the field empty and the coordinator gets exactly that name. If another coordinator took the name in the meantime, it gets another free one. A name you type is checked like a rename, as before.
+- The two model pickers start on DeepSeek V4.1 Flash when DeepSeek Harness offers it: reasoning effort Low for the coordinator and High for its Executor Sessions. When several providers offer the model, the provider of your default model is used. You can change both in the setup step, with the same pickers as on the page, or later on the page. Nothing is set before you press Create.
+- A picker starts empty ("Not set" for the coordinator, "Same as coordinator" for the Executor Sessions) when the model is not available, when the model does not offer the effort meant for that picker, or when the models of your default model's provider could not be loaded. No other effort and no other provider is taken in its place.
+- Your first coordinator goes through the same setup step: with no coordinator yet, the page offers New coordinator.
+- Create waits until the setup step has loaded its suggestions. If they cannot be loaded, the step says so; a coordinator you create then gets an automatic name and no model settings.
+- A model, name or folder that is refused creates nothing. The setup step stays open and shows the reason next to its fields.
+- Once a coordinator is created the setup step closes, also when its chat could not be opened. A notice says so, and the coordinator is in the list with its Open chat button.
+- The model pickers, in the setup step and on the page, name the provider of each model, so the closed picker shows which provider the chosen model comes from.
+
+### Changed
+
+- New coordinator followed by Enter still creates a coordinator with the suggested name, now with the models the setup step shows. In earlier releases a new coordinator had no model settings: its chat started on the DeepSeek Harness default and its Executor Sessions on the chat's model. Choose "Not set" and "Same as coordinator" in the setup step to get that again.
+- Coordinators you already have keep their model settings, also when they have none. A coordinator that comes about without the setup step gets no model settings: a new session you start in a coordinator's sidebar group keeps the model you started it on.
+- What was checked: the test suite on a fake host, and the model ids in the dsh 0.2.2-rc.3 sources and in a running dsh 0.2.2-rc.3. In the desktop app (dsh-desktop 0.2.2-rc.3) with a real model: nothing was created while the setup step was open, Create without typing gave the suggested name with DeepSeek V4.1 Flash at Low in the chat and at High in a new Executor Session, a typed name and "Same as coordinator" showed on the page after Create, a duplicate name was refused in the step, Esc and Cancel created nothing, and Type a path kept the name and the picks. Not run in the app: Choose folder... with the system's folder picker, a picker that starts empty, suggestions that cannot be loaded, the first coordinator, and a chat that cannot be opened.
+
 ## 0.4.1 - 2026-11-15
 
 ### Fixed

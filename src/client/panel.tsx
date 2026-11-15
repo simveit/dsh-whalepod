@@ -1,13 +1,16 @@
 /**
  * Coordinator home (the sidebar's "Coordinator" page): heading with New coordinator, Choose folder and Type a path
- * (each opens the inline form of new-coordinator.tsx, where the user may name the coordinator before it is created),
+ * (each opens the setup step of new-coordinator.tsx, where the user names the coordinator and chooses its two models
+ * before it is created),
  * the global "Executor Sessions run in" control, page-level notices, the coordinator list and the selected
  * coordinator's detail (name with rename, chat action, archive, folder, model and executor prompt settings, folder and model
  * notices, its Executor Sessions grouped like the side pane), then rows without a coordinator and the allowed
  * folders. Layout, row pattern and empty state follow dsh's Automation tasks and Plugins pages; see styles.ts.
  */
 import { memo, useEffect, useId, useState, type ReactNode } from 'react'
-import type { CoordinatorInfo, FolderDecision, HostProblem, ModelChoice, ModelChoices, ModelHealth, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermission } from '../types.ts'
+import type {
+  CoordinatorInfo, CreateCoordinatorRequest, FolderDecision, HostProblem, ModelChoice, ModelChoices, ModelHealth, NewCoordinatorSetup, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermission,
+} from '../types.ts'
 import { CoordinatorArt } from './art.tsx'
 import { ExecutorPrompt } from './executor-prompt.tsx'
 import { CoordinatorMemory } from './memory.tsx'
@@ -33,10 +36,15 @@ export { FolderLine } from './folder.tsx'
 export type UseCoordinator = <T>(select: (snapshot: Snapshot) => T) => T
 
 export interface PanelActions {
-  /** Open a coordinator's chat (reopening it when archived); without an id the last used one, or a new one. Throws with a user-facing message. */
-  openCoordinator(coordinatorId?: string): Promise<void>
-  /** Create a coordinator (in `home` when given, called `name` when the user chose one), select it and open its chat. */
-  newCoordinator(options?: { home?: string; name?: string }): Promise<void>
+  /** Open a coordinator's chat (reopening it when archived). Throws with a user-facing message. */
+  openCoordinator(coordinatorId: string): Promise<void>
+  /** What the New coordinator form starts from: a suggested name, dsh's models and the default model choices. */
+  newCoordinatorSetup(): Promise<NewCoordinatorSetup>
+  /**
+   * Create a coordinator as the form says (folder, name, the two models), select it and open its chat. Throws with the
+   * host's reason when nothing was created; a coordinator that was created but whose chat did not open is `openError`.
+   */
+  newCoordinator(options?: CreateCoordinatorRequest): Promise<{ openError?: string }>
   /** Native folder picker: the desktop bridge, else the workspace UI's host picker. */
   pickFolder(): Promise<PickResult>
   /** Change the folder new Executor Sessions of a coordinator start in. */
@@ -363,7 +371,7 @@ function DeleteConfirm({ coordinator, archivedCount, t, onCancel, onConfirm }: {
   </div>
 }
 
-export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval, dshModel, listModelChoices, watchModels, setCoordinatorModel, setExecutorModel, openCoordinator, newCoordinator, pickFolder, setCoordinatorFolder,
+export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval, dshModel, listModelChoices, watchModels, setCoordinatorModel, setExecutorModel, openCoordinator, newCoordinatorSetup, newCoordinator, pickFolder, setCoordinatorFolder,
   setExecutorPrompt, setCoordinatorMemory, setCoordinatorMemoryEnabled, renameCoordinator, archiveCoordinator, deleteCoordinator, select, openSession, archiveThread, setThreadPermission, confirmFolder, removeAllowedFolder,
   resumeThread, refresh, holdFast }: PanelProps) {
   const snapshot = useCoordinator(s => s)
@@ -371,9 +379,11 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
   // What runs now: 'new', 'choose', or 'open:<coordinator id>'.
   const [busy, setBusy] = useState<string | undefined>(undefined)
   const [notice, setNotice] = useState<Notice | undefined>(undefined)
-  // The inline form that is open before a coordinator is created: where it goes, and the name typed so far. The
-  // name is kept here, so it is still there when the form comes back after the folder picker.
+  // The setup step that is open before a coordinator is created: where it goes, the name typed so far, what the host
+  // proposed and the models chosen. Kept here, so it is all still there when the form comes back after the folder picker.
   const [draft, setDraft] = useState<NewCoordinatorDraft | undefined>(undefined)
+  // Why the host refused the last Create; shown in the form, which stays open.
+  const [createError, setCreateError] = useState<string | undefined>(undefined)
   const [archiving, setArchiving] = useState<string | undefined>(undefined)
   const [deleting, setDeleting] = useState<string | undefined>(undefined)
   // A neutral one-line notice (not an error), e.g. why an archived coordinator's Workspace was kept.
@@ -419,17 +429,24 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
       else say(t('error.open', { reason }))
     })
   }
-  // A refused name or folder creates nothing: the form stays open and the notice says why.
-  const create = (options: { home?: string; name?: string }) => run(options.home === undefined ? 'new' : 'choose', async () => { await newCoordinator(options); setDraft(undefined) },
-    reason => { say(t('error.create', { reason })) })
-  const startNew = () => { setNotice(undefined); setDraft(current => newDraftAt(current, { kind: 'default' })) }
+  // A refused name, folder or model creates nothing: the form stays open and says why. Once the coordinator exists the
+  // form closes, also when its chat could not be opened: that is a notice, and Create cannot run a second time.
+  const create = (options: CreateCoordinatorRequest) => {
+    setCreateError(undefined)
+    return run(options.home === undefined ? 'new' : 'choose', async () => {
+      const { openError } = await newCoordinator(options)
+      setDraft(undefined)
+      if (openError !== undefined) say(t('error.createdNotOpened', { reason: openError }), 'warning')
+    }, (reason) => { setCreateError(t('error.create', { reason })) })
+  }
+  const startNew = () => { setNotice(undefined); setCreateError(undefined); setDraft(current => newDraftAt(current, { kind: 'default' })) }
   const choose = async () => {
-    setNotice(undefined)
+    setNotice(undefined); setCreateError(undefined)
     const picked = await pick.start()
     if (picked.kind === 'picked') setDraft(current => newDraftAt(current, { kind: 'picked', home: picked.path }))
     else if (picked.kind === 'unavailable' || picked.kind === 'timeout') setDraft(current => newDraftAt(current, { kind: 'typed' }))
   }
-  const typePath = () => { pick.cancel(); setNotice(undefined); setDraft(current => newDraftAt(current, { kind: 'typed' })) }
+  const typePath = () => { pick.cancel(); setNotice(undefined); setCreateError(undefined); setDraft(current => newDraftAt(current, { kind: 'typed' })) }
   const openThread = (thread: ThreadInfo) => {
     setNotice(undefined)
     // A row without a coordinator that waits for its folder has nothing to open (L7): say so instead.
@@ -625,8 +642,9 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
         </div>
         {pick.pending && <PickWait slow={pick.slow} t={t} onType={typePath} onCancel={pick.cancel} />}
         {draft !== undefined && !pick.pending && <NewCoordinatorForm key={draft.kind === 'picked' ? `picked:${draft.home}` : draft.kind} draft={draft} coordinators={coordinators}
-          basePath={state?.base?.path ?? ''} busy={busy === 'new' || busy === 'choose'} t={t}
-          onName={(name) => { setDraft(current => (current === undefined ? current : { ...current, name })) }} onCreate={(options) => { void create(options) }} onCancel={() => { setDraft(undefined) }} />}
+          basePath={state?.base?.path ?? ''} busy={busy === 'new' || busy === 'choose'} error={createError} t={t} dsh={dshModel} loadSetup={newCoordinatorSetup} watch={watchModels}
+          onDraft={(patch) => { setCreateError(undefined); setDraft(current => (current === undefined ? current : { ...current, ...patch })) }}
+          onCreate={(options) => { void create(options) }} onCancel={() => { setCreateError(undefined); setDraft(undefined) }} />}
         {__DSH_COORDINATOR_DEV__ && fake && <p className="dco-dev-note" data-testid="dco-fake">Fake data source (?coordinatorSource=real to switch back)</p>}
         {problems.map(problem => <ProblemNotice key={problem.kind} problem={problem} t={t} />)}
         {baseProblem !== undefined && !problems.some(p => p.kind === 'bad-root') && <NoticeBox tone="warning" testId="dco-base-problem">

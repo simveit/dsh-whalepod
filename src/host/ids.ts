@@ -160,20 +160,40 @@ export function nameKey(name: string): string {
 }
 
 /**
- * A random name no live coordinator uses (case-insensitive), from the built-in list; when all are used, a listed name
- * with a number (`Noether 2`).
+ * The names the automatic naming chooses from: the names of the built-in list no live coordinator uses
+ * (case-insensitive); when all are used, the listed names with the lowest number that leaves one free (`Noether 2`).
+ * Empty only when every name up to 9999 is used.
+ * @param used - names of the live coordinators.
+ */
+export function freeNames(used: Iterable<string>): string[] {
+  const taken = new Set([...used].map(nameKey))
+  const free = COORDINATOR_NAMES.map(entry => entry.name).filter(name => !taken.has(nameKey(name)))
+  if (free.length > 0) return free
+  for (let n = 2; n < 10_000; n++) {
+    const numbered = COORDINATOR_NAMES.map(entry => `${entry.name} ${n}`).filter(name => !taken.has(nameKey(name)))
+    if (numbered.length > 0) return numbered
+  }
+  return []
+}
+
+/**
+ * A random name no live coordinator uses, one of `freeNames`.
  * @param used - names of the live coordinators.
  * @param random - picks an index below `n`; injected for tests.
  */
 export function freeName(used: Iterable<string>, random: (n: number) => number = n => randomInt(n)): string {
-  const taken = new Set([...used].map(nameKey))
-  const free = COORDINATOR_NAMES.map(entry => entry.name).filter(name => !taken.has(nameKey(name)))
-  if (free.length > 0) return free[random(free.length)]!
-  for (let n = 2; n < 10_000; n++) {
-    const numbered = COORDINATOR_NAMES.map(entry => `${entry.name} ${n}`).filter(name => !taken.has(nameKey(name)))
-    if (numbered.length > 0) return numbered[random(numbered.length)]!
-  }
-  return `${COORDINATOR_NAMES[0]!.name} ${Date.now()}`
+  const free = freeNames(used)
+  return free.length > 0 ? free[random(free.length)]! : `${COORDINATOR_NAMES[0]!.name} ${Date.now()}`
+}
+
+/**
+ * Whether `name` is a name the automatic naming could give right now, letter for letter (one of `freeNames`). The New
+ * coordinator form sends back the name the host suggested; only such a name is taken as a suggestion. Anything else
+ * (a typed name, a taken name, a number the naming would not reach, a long text) is as if nothing had been suggested,
+ * so a suggestion is never a way around `checkCoordinatorName`.
+ */
+export function isFreeName(name: string, used: Iterable<string>): boolean {
+  return [...name].length <= COORDINATOR_NAME_MAX && freeNames(used).includes(name)
 }
 
 /**

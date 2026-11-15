@@ -19,20 +19,27 @@
  */
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  CoordinatorInfo, EnsureCoordinatorResult, FolderDecision, ModelChoice, ModelChoices, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermission, ThreadPermissionState, ThreadStatus,
+  CoordinatorInfo, CreateCoordinatorRequest, EnsureCoordinatorResult, FolderDecision, ModelChoice, ModelChoices, NewCoordinatorSetup, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermission, ThreadPermissionState,
+  ThreadStatus,
 } from '../types.ts'
 import type { ArchiveResult, ClientState, CoordinatorRemote } from './remote.ts'
 
 export interface CoordinatorSource {
   readonly kind: 'remote' | 'fake'
   getState(signal?: AbortSignal): Promise<ClientState>
-  /** Open the named coordinator (reopening an archived chat), else the last used one, else a new one. */
-  ensureCoordinator(coordinatorId?: string, signal?: AbortSignal): Promise<EnsureCoordinatorResult>
+  /**
+   * Open the named coordinator's chat (reopening an archived coordinator or chat). The client always names one: a
+   * coordinator is only created by `createCoordinator`, after the setup step.
+   */
+  ensureCoordinator(coordinatorId: string, signal?: AbortSignal): Promise<EnsureCoordinatorResult>
+  /** What the New coordinator form starts from: a suggested name, dsh's models, and the default model choices. */
+  newCoordinatorSetup(signal?: AbortSignal): Promise<NewCoordinatorSetup>
   /**
    * New coordinator; `home` from the folder picker, else the host picks `<base>/coordinator-<name>`; `name` as the user
-   * chose it, else the host picks one from its built-in list. A refused name or folder creates nothing.
+   * chose it, else the suggested name while it is free, else the host picks one from its built-in list; the two models
+   * as the form's pickers showed them (`null` or left out for none). A refused name, folder or model creates nothing.
    */
-  createCoordinator(options?: { home?: string; name?: string }, signal?: AbortSignal): Promise<EnsureCoordinatorResult>
+  createCoordinator(options?: CreateCoordinatorRequest, signal?: AbortSignal): Promise<EnsureCoordinatorResult>
   setCoordinatorFolder(coordinatorId: string, path: string, signal?: AbortSignal): Promise<CoordinatorInfo>
   /** Standing instructions for the coordinator's new Executor Sessions; empty text clears them. */
   setExecutorPrompt(coordinatorId: string, text: string, signal?: AbortSignal): Promise<CoordinatorInfo>
@@ -116,9 +123,13 @@ export function remoteSource(remote: () => CoordinatorRemote | undefined): Coord
     kind: 'remote',
     getState: signal => call(() => get().getState(signal)),
     // Requests are always sent as objects, so the host never has to accept a missing parameter.
-    ensureCoordinator: (coordinatorId, signal) => call(() => get().ensureCoordinator(coordinatorId === undefined ? {} : { coordinatorId }, signal)),
+    ensureCoordinator: (coordinatorId, signal) => call(() => get().ensureCoordinator({ coordinatorId }, signal)),
+    newCoordinatorSetup: signal => call(() => get().newCoordinatorSetup(signal)),
     createCoordinator: (options, signal) => call(() => get().createCoordinator({
       ...(options?.home === undefined ? {} : { home: options.home }), ...(options?.name === undefined || options.name.trim() === '' ? {} : { name: options.name }),
+      ...(options?.suggestedName === undefined ? {} : { suggestedName: options.suggestedName }),
+      ...(options?.coordinatorModel === undefined ? {} : { coordinatorModel: options.coordinatorModel }),
+      ...(options?.executorModel === undefined ? {} : { executorModel: options.executorModel }),
     }, signal)),
     setCoordinatorFolder: (coordinatorId, path, signal) => call(() => get().setCoordinatorFolder({ coordinatorId, path }, signal)),
     setExecutorPrompt: (coordinatorId, text, signal) => call(() => get().setExecutorPrompt({ coordinatorId, text }, signal)),
@@ -155,7 +166,7 @@ const FAKE_MEMORY_FEYNMAN = '## Release 0.4\n- Breaking config rename goes first
 /** The fake's model list: two providers, one model without reasoning efforts and one without a default effort. */
 const FAKE_MODELS: ModelChoices['groups'] = [
   { id: 'deepseek-account', name: 'DeepSeek Account', models: [
-    { id: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', efforts: [{ id: 'high', name: 'High' }, { id: 'max', name: 'Max' }], defaultEffort: 'high' },
+    { id: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }, { id: 'max', name: 'Max' }], defaultEffort: 'high' },
     { id: 'deepseek-v4.1-pro', name: 'DeepSeek V4.1 Pro', efforts: [{ id: 'high', name: 'High' }, { id: 'max', name: 'Max' }], defaultEffort: 'high' },
   ] },
   { id: 'opencode-go', name: 'OpenCode Go', models: [
@@ -164,6 +175,8 @@ const FAKE_MODELS: ModelChoices['groups'] = [
   ] },
 ]
 const FAKE_DEFAULT_MODEL: ModelChoice = { provider: 'deepseek-account', model: 'deepseek-v4.1-flash', reasoningEffort: 'high' }
+/** What the host proposes for a new coordinator when dsh offers the model: low effort for the chat, high for its executors. */
+const FAKE_NEW_MODELS = { coordinatorModel: { ...FAKE_DEFAULT_MODEL, reasoningEffort: 'low' }, executorModel: { ...FAKE_DEFAULT_MODEL } }
 
 /** In-memory fake that changes over time, so polling, sorting and transitions are visible without a host (development builds). */
 export function fakeSource(): CoordinatorSource {
@@ -320,24 +333,44 @@ export function fakeSource(): CoordinatorSource {
     if (coordinators.some(c => c.id !== exceptId && c.archived !== true && c.name.toLowerCase() === name.toLowerCase())) return `another coordinator is already called ${name}`
     return undefined
   }
-  const create = (home?: string, wanted?: string): EnsureCoordinatorResult => {
-    // Like the host: a chosen name is checked before anything is made; an empty one means the automatic name.
+  // Like the host: a stored choice counts while its model and effort are in the list.
+  const offered = (choice: ModelChoice | undefined): boolean => {
+    const model = FAKE_MODELS.find(g => g.id === choice?.provider)?.models.find(m => m.id === choice?.model)
+    return model !== undefined && (choice?.reasoningEffort === undefined || model.efforts?.some(e => e.id === choice.reasoningEffort) === true)
+  }
+  const freeNames = (): string[] => {
+    const live = new Set(coordinators.filter(c => c.archived !== true).map(c => c.name))
+    return FAKE_NAMES.filter(n => !live.has(n))
+  }
+  const create = (options: CreateCoordinatorRequest = {}): EnsureCoordinatorResult => {
+    const { home, name: wanted, suggestedName } = options
+    // Like the host: a chosen name is checked before anything is made; an empty one means the suggested or automatic name.
     const chosen = wanted?.trim() ?? ''
     if (chosen !== '') {
       const why = nameRefusal(chosen)
       if (why !== undefined) throw new SourceError(why, false)
     }
+    // A model the form names must be in the list; null or left out is none.
+    for (const [choice, what] of [[options.coordinatorModel, 'coordinator model'], [options.executorModel, 'executor model']] as const) {
+      if (choice != null && !offered(choice)) throw new SourceError(`the ${what} cannot be used: its provider does not offer this model`, false)
+    }
+    const coordinatorModel = options.coordinatorModel ?? undefined
+    const executorModel = options.executorModel ?? undefined
     if (home !== undefined) {
       const why = refusal(home)
       if (why !== undefined) throw new SourceError(`This folder can't be a coordinator's home: ${why}.`, false)
     }
     const at = Date.now()
     const id = `c-${hex()}`
-    const live = new Set(coordinators.filter(c => c.archived !== true).map(c => c.name))
-    const free = FAKE_NAMES.filter(n => !live.has(n))
-    const name = chosen !== '' ? chosen : free.length > 0 ? free[Math.floor(Math.random() * free.length)]! : `Noether ${coordinators.length + 1}`
+    const free = freeNames()
+    const name = chosen !== '' ? chosen : suggestedName !== undefined && free.includes(suggestedName) ? suggestedName
+      : free.length > 0 ? free[Math.floor(Math.random() * free.length)]! : `Noether ${coordinators.length + 1}`
     const path = home ?? `${BASE}/coordinator-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
-    coordinators.push({ id, sessionId: `fake-coordinator-${id}`, name, title: name, home: path, folder: path, createdAt: at, updatedAt: at })
+    coordinators.push({
+      id, sessionId: `fake-coordinator-${id}`, name, title: name, home: path, folder: path,
+      ...(coordinatorModel === undefined ? {} : { coordinatorModel: { ...coordinatorModel } }), ...(executorModel === undefined ? {} : { executorModel: { ...executorModel } }),
+      createdAt: at, updatedAt: at,
+    })
     lastCoordinatorId = id
     revision += 1
     return { coordinatorId: id, sessionId: `fake-coordinator-${id}` }
@@ -357,9 +390,7 @@ export function fakeSource(): CoordinatorSource {
     },
     async ensureCoordinator(coordinatorId, signal) {
       await delay(signal)
-      const id = coordinatorId ?? lastCoordinatorId
-      if (id === undefined) return create()
-      const record = find(id)
+      const record = find(coordinatorId)
       if (record.archived === true && refuseReopen) {
         // Once, so the refused-Reopen notice can be seen; the host refuses for example at 20 live coordinators.
         refuseReopen = false
@@ -372,9 +403,18 @@ export function fakeSource(): CoordinatorSource {
       revision += 1
       return { coordinatorId: record.id, sessionId: record.sessionId! }
     },
+    async newCoordinatorSetup(signal) {
+      await delay(signal)
+      const free = freeNames()
+      return {
+        name: free.length > 0 ? free[Math.floor(Math.random() * free.length)]! : `Noether ${coordinators.length + 1}`,
+        groups: FAKE_MODELS.map(g => ({ ...g, models: g.models.map(m => ({ ...m })) })), partial: false,
+        coordinatorModel: { ...FAKE_NEW_MODELS.coordinatorModel }, executorModel: { ...FAKE_NEW_MODELS.executorModel },
+      }
+    },
     async createCoordinator(options, signal) {
       await delay(signal)
-      return create(options?.home, options?.name)
+      return create(options)
     },
     async setCoordinatorFolder(coordinatorId, path, signal) {
       await delay(signal)
@@ -431,11 +471,6 @@ export function fakeSource(): CoordinatorSource {
     async listModelChoices(coordinatorId, signal) {
       await delay(signal)
       const record = find(coordinatorId)
-      // Like the host: a stored choice counts while its model and effort are in the list.
-      const offered = (choice: ModelChoice | undefined): boolean => {
-        const model = FAKE_MODELS.find(g => g.id === choice?.provider)?.models.find(m => m.id === choice?.model)
-        return model !== undefined && (choice?.reasoningEffort === undefined || model.efforts?.some(e => e.id === choice.reasoningEffort) === true)
-      }
       const chat = record.coordinatorModel ?? FAKE_DEFAULT_MODEL
       const executors = record.executorModel !== undefined && offered(record.executorModel) ? record.executorModel : chat
       return {

@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readdirSync, rmdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import type {
-  ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelChoices, ModelHealth, ModelOption, ModelSettingState, ReportKind, SetCoordinatorMemoryResult, ThreadAction, ThreadInfo, ThreadPermission, ThreadPermissionState, ThreadReport,
+  ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelChoices, ModelHealth, ModelOption, ModelSettingState, NewCoordinatorSetup, ReportKind, SetCoordinatorMemoryResult, ThreadAction, ThreadInfo, ThreadPermission, ThreadPermissionState, ThreadReport,
 } from '../types.ts'
 import { isUserTyped, turnOpenedByUser, turnSawThreadData, userTypedTexts } from './authority.ts'
 import { coordinatorAllow, coordinatorWanted, knownFromRestrictError } from './coordinator-tools.ts'
@@ -27,10 +27,11 @@ import { latestTodos, page, recent, todoLines, toEntries, type HistoryContext, t
 import { checkCall, denialReason, type GuardDenial, type StateGuardEnv } from './home-guard.ts'
 import {
   briefWorkingDirectory, checkCoordinatorName, cleanExecutorPrompt, cleanMemory, COORDINATOR_TITLE, COORDINATORS_MAX, coordinatorFolderName, coordinatorTitle, discoverBase,
-  EXECUTOR_PROMPT_MAX, executorGroupTitle, freeName, isExecutorId, isLegacyCoordinatorTitle, LOOK_IN_MAX_MINUTES, MEMORY_MAX, MEMORY_RAW_MAX, nameKey, newCoordinatorId, prefixedCoordinatorTitle, newThreadId, normalizeTitle, threadDir, type CoordinatorConfig,
+  EXECUTOR_PROMPT_MAX, executorGroupTitle, freeName, isExecutorId, isFreeName, isLegacyCoordinatorTitle, LOOK_IN_MAX_MINUTES, MEMORY_MAX, MEMORY_RAW_MAX, nameKey, newCoordinatorId, prefixedCoordinatorTitle, newThreadId, normalizeTitle, threadDir, type CoordinatorConfig,
 } from './ids.ts'
 import { coordinatorMemoryContext, MEMORY_CONTEXT_ORDER, MEMORY_OFF_CONTEXT, memoryConflictView, memoryOffLine, memoryPageView, type MemoryPage } from './memory-text.ts'
 import { isModelId, MODEL_ID_MAX, modelChoiceOf, modelLabel, pickModel, sameChoice, type ModelChoice } from './model.ts'
+import { newCoordinatorModels } from './model-defaults.ts'
 import { COORDINATOR_FALLBACK_PROMPT, LEAD_FALLBACK_PROMPT, renderCoordinatorPrompt, renderThreadPrompt, ROLE, TOOL } from './names.ts'
 import { FOCUS_MAX, FOCUS_RAW_MAX, focusLine, formatNotices, LOOK_IN_REPORTS, NoticeBatcher, noticeMessages, realTimers, type LookIn, type Notice, type Timers } from './notices.ts'
 import { leadAction, memberAction, storedPreset, targetPermission } from './permission.ts'
@@ -399,6 +400,8 @@ export class ThreadService implements ThreadOps {
   private readonly threadIdRandom: (() => string) | undefined
   /** The New coordinator that "Open coordinator chat" started while none existed. */
   private ensuringNew: Promise<{ coordinatorId: string; sessionId: string }> | undefined
+  /** The `newCoordinatorSetup` that is running, shared by the calls that arrive meanwhile. */
+  private settingUp: Promise<NewCoordinatorSetup> | undefined
   /** Serialises New coordinator, so two calls never pick the same folder. */
   private creatingCoordinator: Promise<unknown> = Promise.resolve()
   /** Coordinator chats being archived by the plugin itself (their archive event is not the sidebar's). */
@@ -1536,7 +1539,11 @@ export class ThreadService implements ThreadOps {
 
   /** A free name from the built-in list for a new or reopened coordinator. */
   private newName(): string {
-    return freeName(this.liveCoordinators().map(c => c.name ?? ''), this.pickName)
+    return freeName(this.liveNames(), this.pickName)
+  }
+
+  private liveNames(): string[] {
+    return this.liveCoordinators().map(c => c.name ?? '')
   }
 
   /** Whether a live coordinator other than `except` already has this name (`nameKey`). */
@@ -3009,7 +3016,8 @@ export class ThreadService implements ThreadOps {
     const coord = wanted === undefined ? this.lastCoordinator() : this.coordinators.get(wanted)
     if (wanted !== undefined && coord === undefined) throw new Error('unknown coordinator')
     if (coord === undefined) {
-      // Concurrent opens with no coordinator yet share one New coordinator.
+      // Concurrent opens with no coordinator yet share one New coordinator. It is created without the setup step, so
+      // it gets an automatic name and no model settings. The page does not call this: it opens the setup step.
       this.ensuringNew ??= this.createCoordinator().finally(() => { this.ensuringNew = undefined })
       return this.ensuringNew
     }
@@ -3101,12 +3109,21 @@ export class ThreadService implements ThreadOps {
    * `standard`, on `workspace-write`, narrowed, with the model-free opening turn.
    *
    * The name is the one the user chose on the page (`name`), checked like a rename (`checkCoordinatorName`, unique
-   * among the live coordinators); without one, or with an empty one, a free name from the built-in list. A refused
-   * name creates nothing. Every other way a coordinator comes about (Open chat without one, a New Session in a
-   * coordinator's group, the upgrade of an earlier release, Reopen) keeps the automatic name.
+   * among the live coordinators); without one, or with an empty one, the name the form suggested (`suggestedName`, from
+   * `newCoordinatorSetup`) while that is a built-in name no live coordinator took meanwhile, else another free name
+   * from the built-in list. A refused name creates nothing.
+   *
+   * The two models (`coordinatorModel` for the chat, `executorModel` for its new Executor Sessions) are the ones the
+   * form's pickers showed: a choice, which must be one dsh offers (`choiceProblem`; a refused one creates nothing), or
+   * `null` or left out for none ("Not set", "Same as coordinator"). No default is applied here: the defaults of
+   * model-defaults.ts are only what the form's pickers start on (`newCoordinatorSetup`), so a model is stored only
+   * when the request names it. The chat starts on the coordinator model, as a replacement chat starts on a stored one.
+   *
+   * Every way a coordinator comes about without the form (`ensureCoordinator` with no coordinator, a New Session in a
+   * coordinator's group, the upgrade of an earlier release, Reopen) keeps the automatic name and sets no model.
    */
-  createCoordinator(request: { home?: unknown; name?: unknown } = {}): Promise<{ coordinatorId: string; sessionId: string }> {
-    const { home, name } = request ?? {}
+  createCoordinator(request: { home?: unknown; name?: unknown; suggestedName?: unknown; coordinatorModel?: unknown; executorModel?: unknown } = {}): Promise<{ coordinatorId: string; sessionId: string }> {
+    const { home, name, suggestedName, coordinatorModel, executorModel } = request ?? {}
     if (home !== undefined && (typeof home !== 'string' || home.trim() === '')) return Promise.reject(new Error('home must be a folder path'))
     let wanted: string | undefined
     if (name !== undefined && name !== null && !(typeof name === 'string' && name.trim() === '')) {
@@ -3114,20 +3131,71 @@ export class ThreadService implements ThreadOps {
       if ('error' in checked) return Promise.reject(new Error(checked.error))
       wanted = checked.name
     }
-    const run = this.creatingCoordinator.then(() => this.createOnce(home as string | undefined, wanted))
+    // Left out or null: none; a choice: checked against dsh's lists where the creations run.
+    const asked = (value: unknown, field: string): ModelChoice | undefined => {
+      if (value === undefined || value === null) return undefined
+      const choice = modelChoiceOf(value)
+      if (choice === undefined) throw new Error(`${field} must be null or name a provider and a model from the list (ids of at most ${MODEL_ID_MAX} characters)`)
+      return choice
+    }
+    let models: { coordinator: ModelChoice | undefined; executors: ModelChoice | undefined }
+    try {
+      models = { coordinator: asked(coordinatorModel, 'coordinatorModel'), executors: asked(executorModel, 'executorModel') }
+    } catch (error) {
+      return Promise.reject(error as Error)
+    }
+    const suggested = typeof suggestedName === 'string' ? suggestedName : undefined
+    const run = this.creatingCoordinator.then(() => this.createOnce(home as string | undefined, wanted, suggested, models))
     this.creatingCoordinator = run.catch(() => undefined)
     return run
   }
 
-  private async createOnce(requested: string | undefined, wanted?: string): Promise<{ coordinatorId: string; sessionId: string }> {
+  /**
+   * What the New coordinator form starts from (a Remote method; owner only): a free name from the built-in list, as a
+   * coordinator created now without a typed name would get, dsh's models for the two pickers, and the default choice
+   * for each picker when dsh offers it (model-defaults.ts; each one checked with `choiceProblem`). Nothing is
+   * reserved: the form sends the name and the choices back with `createCoordinator`, which checks all of them again.
+   * Calls that arrive while one is running share its answer (the form asks again on every model event of dsh).
+   */
+  newCoordinatorSetup(): Promise<NewCoordinatorSetup> {
+    this.settingUp ??= this.proposeSetup().finally(() => { this.settingUp = undefined })
+    return this.settingUp
+  }
+
+  private async proposeSetup(): Promise<NewCoordinatorSetup> {
+    await this.validated
+    const { failed, ...catalog } = await this.providerLists()
+    // Among several providers with the model, the one the user's dsh default model comes from.
+    const found = newCoordinatorModels(catalog.groups, this.defaultModel()?.provider, failed)
+    const offered = async (choice: ModelChoice | undefined): Promise<ModelChoice | undefined> => (choice !== undefined && await this.choiceProblem(choice) === undefined ? choice : undefined)
+    const [coordinatorModel, executorModel] = [await offered(found.coordinatorModel), await offered(found.executorModel)]
+    return {
+      name: this.newName(), ...catalog,
+      ...(coordinatorModel === undefined ? {} : { coordinatorModel }),
+      ...(executorModel === undefined ? {} : { executorModel }),
+    }
+  }
+
+  private async createOnce(
+    requested: string | undefined, wanted: string | undefined, suggested: string | undefined,
+    asked: { coordinator: ModelChoice | undefined; executors: ModelChoice | undefined },
+  ): Promise<{ coordinatorId: string; sessionId: string }> {
     await this.validated
     if (this.disposed) throw new Error('the coordinator plugin is unloading')
     if (this.liveCoordinators().length >= COORDINATORS_MAX) throw new Error(`at most ${COORDINATORS_MAX} coordinators; archive one on the Coordinator page to add another`)
+    // A model the request names must be one dsh offers now. One it does not name stays unset: no default is applied here.
+    for (const [choice, what] of [[asked.coordinator, 'coordinator model'], [asked.executors, 'executor model']] as const) {
+      const why = choice === undefined ? undefined : await this.choiceProblem(choice)
+      if (why !== undefined) throw new Error(`the ${what} cannot be used: ${why}`)
+    }
+    const { coordinator: coordinatorModel, executors: executorModel } = asked
+    if (this.disposed) throw new Error('the coordinator plugin is unloading')
     // Checked here, where creations run one after the other: two calls with the same name cannot both pass.
     if (wanted !== undefined && this.nameTaken(wanted)) {
       throw new Error(`another coordinator is already called ${wanted}`)
     }
-    const name = wanted ?? this.newName()
+    // The suggested name only while the automatic naming could give that very name now; else as if none had been suggested.
+    const name = wanted ?? (suggested !== undefined && isFreeName(suggested, this.liveNames()) ? suggested : this.newName())
     const title = coordinatorTitle(name)
     let home: string
     if (requested === undefined) {
@@ -3156,11 +3224,13 @@ export class ThreadService implements ThreadOps {
     try {
       workspace = await this.homeWorkspace(home, title)
       const id = this.newCoordinatorId()
-      const chat = await this.newChat(workspace.id, title, id)
+      const chat = await this.newChat(workspace.id, title, id, coordinatorModel)
       agent = chat.agent
       const now = this.now()
       const coord: CoordinatorRecord = {
-        id, sessionId: agent.id, home, folder: home, workspaceId: workspace.id, name, title, marks: 'opening', pastSessionIds: [], held: [], createdAt: now, updatedAt: now,
+        id, sessionId: agent.id, home, folder: home, workspaceId: workspace.id, name, title, marks: 'opening', pastSessionIds: [], held: [],
+        ...(coordinatorModel === undefined ? {} : { coordinatorModel }), ...(executorModel === undefined ? {} : { executorModel }),
+        createdAt: now, updatedAt: now,
       }
       this.addCoordinator(coord)
       this.restrictCoordinator(agent)
@@ -3258,7 +3328,7 @@ export class ThreadService implements ThreadOps {
     try {
       await this.ctx.sessionController.rename({ sessionId: created.sessionId, title })
       const agent = await this.agent(created.sessionId)
-      // A replacement chat starts on the model stored for its coordinator, while dsh still offers that model.
+      // A new or a replacement chat starts on the model set for its coordinator, while dsh still offers that model.
       const wanted = stored !== undefined && await this.choiceProblem(stored) === undefined ? stored : undefined
       const model = await this.ensureModel(agent, [wanted], wanted !== undefined, wanted)
       this.sandboxChat(agent)
@@ -3519,17 +3589,24 @@ export class ThreadService implements ThreadOps {
 
   /** dsh's providers (the DeepSeek account first, then DeepSeek, as dsh's own picker orders them) with their models. */
   private async modelCatalog(): Promise<Pick<ModelChoices, 'groups' | 'partial'>> {
+    const { groups, partial } = await this.providerLists()
+    return { groups, partial }
+  }
+
+  /** `modelCatalog` with the ids of the providers whose model list could not be loaded (`failed`). */
+  private async providerLists(): Promise<Pick<ModelChoices, 'groups' | 'partial'> & { failed: string[] }> {
     const llm = this.llm()
-    if (llm === undefined) return { groups: [], partial: true }
+    if (llm === undefined) return { groups: [], partial: true, failed: [] }
     const id = isModelId
     const name = (value: unknown, fallback: string): string => (typeof value === 'string' && value.trim() !== '' ? value.trim().slice(0, MODEL_ID_MAX) : fallback)
     let providers: readonly { readonly id: string; readonly name?: string }[]
     try {
       providers = llm.listProviders()
     } catch {
-      return { groups: [], partial: true }
+      return { groups: [], partial: true, failed: [] }
     }
     let partial = false
+    const failed: string[] = []
     const rank = (provider: string): number => (provider === 'deepseek-account' ? 0 : provider === 'deepseek-official' ? 1 : 2)
     const groups = await Promise.all(providers.filter(provider => id(provider.id)).slice(0, MODEL_PROVIDERS_MAX).map(async (provider) => {
       try {
@@ -3547,12 +3624,13 @@ export class ThreadService implements ThreadOps {
         return { id: provider.id, name: name(provider.name, provider.id), models }
       } catch {
         partial = true
+        failed.push(provider.id)
         return undefined
       }
     }))
     return {
       groups: groups.filter((group): group is NonNullable<typeof group> => group !== undefined && group.models.length > 0).sort((a, b) => rank(a.id) - rank(b.id)),
-      partial,
+      partial, failed,
     }
   }
 

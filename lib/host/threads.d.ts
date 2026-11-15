@@ -1,4 +1,4 @@
-import type { ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelChoices, ReportKind, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermissionState } from '../types.ts';
+import type { ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelChoices, NewCoordinatorSetup, ReportKind, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermissionState } from '../types.ts';
 import { type GuardFs } from './cwd-guard.ts';
 import type { HostContext, SessionId } from './dsh.ts';
 import { type CoordinatorConfig } from './ids.ts';
@@ -118,6 +118,8 @@ export declare class ThreadService implements ThreadOps {
     private readonly threadIdRandom;
     /** The New coordinator that "Open coordinator chat" started while none existed. */
     private ensuringNew;
+    /** The `newCoordinatorSetup` that is running, shared by the calls that arrive meanwhile. */
+    private settingUp;
     /** Serialises New coordinator, so two calls never pick the same folder. */
     private creatingCoordinator;
     /** Coordinator chats being archived by the plugin itself (their archive event is not the sidebar's). */
@@ -365,6 +367,7 @@ export declare class ThreadService implements ThreadOps {
     private liveCoordinators;
     /** A free name from the built-in list for a new or reopened coordinator. */
     private newName;
+    private liveNames;
     /** Whether a live coordinator other than `except` already has this name (`nameKey`). */
     private nameTaken;
     /** An id no coordinator and no candidate has. */
@@ -634,17 +637,38 @@ export declare class ThreadService implements ThreadOps {
      * `standard`, on `workspace-write`, narrowed, with the model-free opening turn.
      *
      * The name is the one the user chose on the page (`name`), checked like a rename (`checkCoordinatorName`, unique
-     * among the live coordinators); without one, or with an empty one, a free name from the built-in list. A refused
-     * name creates nothing. Every other way a coordinator comes about (Open chat without one, a New Session in a
-     * coordinator's group, the upgrade of an earlier release, Reopen) keeps the automatic name.
+     * among the live coordinators); without one, or with an empty one, the name the form suggested (`suggestedName`, from
+     * `newCoordinatorSetup`) while that is a built-in name no live coordinator took meanwhile, else another free name
+     * from the built-in list. A refused name creates nothing.
+     *
+     * The two models (`coordinatorModel` for the chat, `executorModel` for its new Executor Sessions) are the ones the
+     * form's pickers showed: a choice, which must be one dsh offers (`choiceProblem`; a refused one creates nothing), or
+     * `null` or left out for none ("Not set", "Same as coordinator"). No default is applied here: the defaults of
+     * model-defaults.ts are only what the form's pickers start on (`newCoordinatorSetup`), so a model is stored only
+     * when the request names it. The chat starts on the coordinator model, as a replacement chat starts on a stored one.
+     *
+     * Every way a coordinator comes about without the form (`ensureCoordinator` with no coordinator, a New Session in a
+     * coordinator's group, the upgrade of an earlier release, Reopen) keeps the automatic name and sets no model.
      */
     createCoordinator(request?: {
         home?: unknown;
         name?: unknown;
+        suggestedName?: unknown;
+        coordinatorModel?: unknown;
+        executorModel?: unknown;
     }): Promise<{
         coordinatorId: string;
         sessionId: string;
     }>;
+    /**
+     * What the New coordinator form starts from (a Remote method; owner only): a free name from the built-in list, as a
+     * coordinator created now without a typed name would get, dsh's models for the two pickers, and the default choice
+     * for each picker when dsh offers it (model-defaults.ts; each one checked with `choiceProblem`). Nothing is
+     * reserved: the form sends the name and the choices back with `createCoordinator`, which checks all of them again.
+     * Calls that arrive while one is running share its answer (the form asks again on every model event of dsh).
+     */
+    newCoordinatorSetup(): Promise<NewCoordinatorSetup>;
+    private proposeSetup;
     private createOnce;
     /** The first `<base>/coordinator-<name>`, `-2`, ... that is no registered Workspace, no non-empty folder, and allowed. */
     private pickHome;
@@ -744,6 +768,8 @@ export declare class ThreadService implements ThreadOps {
     }): Promise<ModelChoices>;
     /** dsh's providers (the DeepSeek account first, then DeepSeek, as dsh's own picker orders them) with their models. */
     private modelCatalog;
+    /** `modelCatalog` with the ids of the providers whose model list could not be loaded (`failed`). */
+    private providerLists;
     /**
      * The user's Executor prompt for a coordinator (a Remote method; only the owner may call it; no model tool can read
      * or change it). Empty text clears it. It applies to Executor Sessions started afterwards.

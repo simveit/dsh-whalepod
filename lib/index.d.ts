@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult, DeleteCoordinatorRequest, DeleteCoordinatorResult, ListModelChoicesRequest, ModelChoices, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, SetModelRequest, ThreadPermissionState } from './types.ts';
+import type { ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult, DeleteCoordinatorRequest, DeleteCoordinatorResult, ListModelChoicesRequest, ModelChoices, NewCoordinatorSetup, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, SetModelRequest, ThreadPermissionState } from './types.ts';
 export type * from './types.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
@@ -28,7 +28,16 @@ export default class CoordinatorService extends TypertRemoteService {
      * a new one.
      */
     ensureCoordinator(request: EnsureCoordinatorRequest | undefined, signal: AbortSignal): Promise<EnsureCoordinatorResult>;
-    /** New coordinator: its own folder below the base, or `home` from the folder picker; `name` when the user chose one. */
+    /**
+     * What the New coordinator form starts from: a suggested name from the built-in list, the models dsh offers, and the
+     * default model for the coordinator and for its executors when dsh offers it. Owner only.
+     */
+    newCoordinatorSetup(signal: AbortSignal): Promise<NewCoordinatorSetup>;
+    /**
+     * New coordinator: its own folder below the base, or `home` from the folder picker; `name` when the user chose one,
+     * else the suggested name; the two models the form's pickers showed (none when left out). A refused value creates
+     * nothing.
+     */
     createCoordinator(request: CreateCoordinatorRequest | undefined, signal: AbortSignal): Promise<EnsureCoordinatorResult>;
     /** Change where a coordinator's new threads go; existing threads and the chat stay where they are. */
     setCoordinatorFolder(request: SetCoordinatorFolderRequest, signal: AbortSignal): Promise<CoordinatorInfo>;
