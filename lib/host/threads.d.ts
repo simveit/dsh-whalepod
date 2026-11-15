@@ -15,6 +15,14 @@ export declare const SESSION_PRESET = "standard";
 /** Preset names of releases before this one; Sessions carrying them are moved to `standard` once (migrateLegacy). */
 export declare const LEGACY_PRESETS: readonly ["thread", "coordinator"];
 /**
+ * Notices kept per coordinator in each of its two lists: while its chat is archived or gone (`held`) and while its
+ * chat cannot take them (`waiting`). One bound for both, so notices that move from one list to the other are not
+ * cut on the way. Past it the oldest quiet ones go first, then the oldest, and the log says how many (`capNotices`).
+ */
+export declare const KEPT_NOTICES_MAX = 200;
+/** How often notices that wait for the end of a coordinator's turn are looked at again, should its idle event be missed. */
+export declare const WAITING_RECHECK_MS = 30000;
+/**
  * How long a due look-in waits again while its coordinator runs a turn, and once when its executor is between two
  * turns at the due time.
  */
@@ -476,6 +484,8 @@ export declare class ThreadService implements ThreadOps {
     private interruptMembers;
     /** A lead's turn that ended because someone pressed Stop (`aborted` with a `user` cause). */
     private userStop;
+    /** Whether a turn ended in a way after which dsh runs no queued input: stopped, failed or blocked. */
+    private turnBroke;
     /** Session ids of the members of a thread's tree that still run. */
     private runningMembers;
     private registerPrompt;
@@ -924,7 +934,14 @@ export declare class ThreadService implements ThreadOps {
     private briefText;
     private deliverBrief;
     /**
-     * Deliver text to a thread lead once per request key: steer a running lead, otherwise queue a turn.
+     * Deliver text to a thread lead once per request key: it joins a running Lead's turn at its next step, and starts a
+     * turn of an idle one.
+     *
+     * An agent message always goes to the Lead's next-step list (`steer`, or `inject` when it must not wake), never
+     * to its next-turn list: dsh shows that list in the queue strip above the Executor Session's composer, where the
+     * user could edit, delete or send the plugin's message as if they had queued it. `steer` on an idle Agent starts a
+     * turn whose first step admits the message. Only an Assignment with the user's authority is a prompt
+     * (`sessionController.prompt`): it is recorded as the user's message on purpose, and it goes to a Lead that is idle.
      * @param as - `user` records a prompt (only for a brief with user authority); `notice` an agent message.
      * @param sender - session the agent message is attributed to (the coordinator, or a peer thread).
      */
@@ -993,8 +1010,18 @@ export declare class ThreadService implements ThreadOps {
     private lookInLive;
     /** Drop an executor's pending look-in: its timer, or its notice in the batcher (which then no longer matches). */
     private cancelLookIn;
-    /** Whether the coordinator that owns this executor runs a turn now (a due look-in waits for it). */
+    /** Whether a coordinator's chat runs a turn now (text an executor writes then reaches that turn). */
     private coordinatorBusy;
+    /**
+     * Whether a chat cannot take a turn of the plugin's now: it runs one, or it is idle with input of the user that
+     * dsh keeps pending after a turn that was stopped or failed. That is a message in the next-turn list (the queue
+     * strip), or steering of the user in the next-step list (they steered a queued message, or pressed
+     * Cmd/Ctrl+Enter, and the turn was stopped before its next step; dsh counts both as pending human input). A turn
+     * the plugin started then would send that input for the user. The one rule for a waking notice and for a look-in.
+     */
+    private chatTaken;
+    /** `chatTaken` for the chat of the coordinator with this id (a due look-in waits while it holds). */
+    private coordinatorTaken;
     /**
      * `executor_check_later`: schedule one look-in at one of the caller's own executors, replacing a pending one; 0
      * minutes cancels. The gap is clamped to [checkLaterMinMinutes, 240]. Refused for an executor that is not working
@@ -1008,16 +1035,16 @@ export declare class ThreadService implements ThreadOps {
     /**
      * A due look-in. Dropped when the coordinator's chat is closed. An executor that is not working is looked at once
      * more after `LOOK_IN_DEFER_MS` (it may be between two turns of its Lead), then the look-in is dropped. It waits
-     * again while the coordinator runs a turn. Otherwise it becomes a waking `lookIn` notice with the Lead's todo list
-     * (from its log) and previews of its latest Reports and message. The look-in stays pending (`due`) until that
-     * notice is delivered or dropped, so a cancel or a new schedule still reaches it.
+     * again while the coordinator's chat cannot take a turn (`chatTaken`). Otherwise it becomes a waking `lookIn`
+     * notice with the Lead's todo list (from its log) and previews of its latest Reports and message. The look-in
+     * stays pending (`due`) until that notice is delivered or dropped, so a cancel or a new schedule still reaches it.
      */
     private fireLookIn;
     /**
      * Look-ins at delivery. One that was cancelled or replaced since it came due is dropped. One whose executor also
      * has another waking notice in the batch is dropped (that notice wakes the coordinator anyway). One whose
-     * coordinator is running a turn now goes back to its timer for `LOOK_IN_DEFER_MS`: it stays the executor's pending
-     * look-in, so a cancel reaches it, and its content is collected again when it next comes due.
+     * coordinator's chat cannot take a turn now goes back to its timer for `LOOK_IN_DEFER_MS`: it stays the
+     * executor's pending look-in, so a cancel reaches it, and its content is collected again when it next comes due.
      */
     private lookInsReady;
     /**
@@ -1031,8 +1058,71 @@ export declare class ThreadService implements ThreadOps {
      */
     private guardWakes;
     private deliverNotices;
-    /** Deliver one coordinator's notices to its chat, or hold them while the chat is archived or gone. */
+    /**
+     * Deliver one coordinator's notices to its chat, or keep them on the record: while the chat is archived or gone
+     * (`held`), and while the chat cannot take them (`waiting`).
+     *
+     * Nothing of the plugin's is ever queued for the chat's next turn. dsh shows every message in an Agent's next-turn
+     * list in the queue strip above the composer, whatever its source, with controls to edit, delete and send it, as
+     * if the user had queued it (dsh-client-ui-conversation `QueueDock`). So a batch that wakes waits in the plugin
+     * while the chat runs a turn, and later notices of that coordinator wait behind it, in order. When the chat is
+     * idle, the waiting notices and the new ones go out together into the Agent's next-step list, which dsh does not
+     * show: all messages but the last with `inject`, the last with `steer`, which starts one turn whose first step
+     * admits all of them in order. Quiet notices alone are added with `inject`, as before, also to a running turn.
+     *
+     * An idle chat with input of the user that dsh keeps pending counts as running (`chatTaken`): the plugin never
+     * starts or joins it. Notices that waited through a turn the user stopped, or one that failed or was blocked,
+     * keep waiting (`blocked`): they are neither started nor added to the chat, so the user's next request runs
+     * without them and keeps the user's authority. They go out, as a turn of their own, when a turn of the chat has
+     * ended normally and the chat is idle, or together with a new notice that wakes the chat. A notice that was still
+     * in the batch window when such a turn ended counts as one that waited through it (`Notice.turnBroke`): a result
+     * reported a moment before the user pressed Stop does not start the chat again a moment after.
+     * `input` may be empty: then only the waiting notices are looked at (`flushWaiting`).
+     */
     private deliverTo;
+    /**
+     * A batch as the messages the coordinator's chat gets. A batch that wakes is one message per thread, attributed
+     * to the thread's session with dsh's agent-to-agent source: the chat shows each as a task message, and all of them
+     * open the same coordinator turn; a quiet notice in the same batch rides along in its thread's message. A look-in
+     * (alone or with quiet progress of its executor) is a collapsed notice row with its one-line summary, not a message
+     * from the executor. A quiet batch is one message of background context: a collapsed row with the one-line summary.
+     * Each message names the executor it is about (`threadId`); the one message of a quiet batch names none.
+     */
+    private noticesFor;
+    /**
+     * Bound a list of kept notices (`KEPT_NOTICES_MAX`): past the bound the oldest quiet notices go first, then the
+     * oldest. Nothing is dropped without a log line that says how many and why.
+     */
+    private capNotices;
+    /**
+     * Whether the coordinator's waiting notices, with `input` behind them, have to stay where they are: some of them
+     * waited through a turn that did not end normally (`blocked`), and nothing that came after that turn wakes the chat.
+     */
+    private waitsForTurn;
+    /** Put the waiting list on the record, with the count of blocked notices at its front kept right. */
+    private setWaiting;
+    /** Put notices behind the blocked ones at the front of the waiting list, as blocked ones themselves (see `blocked`). */
+    private blockNotices;
+    /** Keep notices on the record until the coordinator's chat can take them, and look again after a while. */
+    private keepWaiting;
+    /** Drop the waiting status notices that no longer hold (`staleNotice`). */
+    private dropStaleWaiting;
+    /** Take the waiting notices off the record. */
+    private takeWaiting;
+    /**
+     * The coordinator's chat is archived or gone: its waiting notices and `notices` join the held ones, in order, and
+     * are handed over as background when the chat is open again (`handHeld`).
+     */
+    private holdNotices;
+    /** The coordinator's chat may be idle now: deliver the notices that waited for the end of its turn. */
+    private flushWaiting;
+    /**
+     * On unload: notices that still wait are added to the coordinator's chat without waking it, also to a turn that
+     * runs, so a reload or the end of the app need not lose them (they go to the next-step list, which dsh keeps in
+     * the Session log). This includes notices that waited behind a stopped or failed turn: the plugin's memory ends
+     * here, and a notice the coordinator reads late is better than one it never gets.
+     */
+    private handOverWaiting;
     /** Hand a coordinator's held notices to its chat, as quiet background, once the chat is open again. */
     private handHeld;
 }

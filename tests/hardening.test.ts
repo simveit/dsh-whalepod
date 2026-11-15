@@ -11,10 +11,10 @@ import { isUserTyped } from '../src/host/authority.ts'
 import { coordinatorAllow, knownFromRestrictError } from '../src/host/coordinator-tools.ts'
 import { parseConfig } from '../src/host/ids.ts'
 import { TOOL } from '../src/host/names.ts'
-import { FakeHost, rig, tick, withCoordinator, type FakeAgent } from './harness.ts'
+import { FakeHost, rig, tick, wakesOf, withCoordinator, type FakeAgent } from './harness.ts'
 
 const text = (m: { content: readonly { text: string }[] }) => m.content.map(c => c.text).join('\n')
-const wakes = (c: FakeAgent) => c.received.filter(r => r.how === 'followup' && !r.message.id.includes(':opening:')).map(r => text(r.message))
+const wakes = (c: FakeAgent) => wakesOf(c).map(r => text(r.message))
 const agentMessage = (id: string) => ({ id, role: 'user' as const, content: [{ type: 'text' as const, text: 'x' }], source: { kind: 'agent-message', senderSessionId: 'c' } })
 const step = (host: FakeHost, agent: FakeAgent, messages: unknown[]) => host.emit('agent/pre-step', { agent, step: 1, turn: 1, messages }) as Promise<{ kind: string; messages: unknown[]; fromDefault?: boolean }>
 
@@ -22,6 +22,8 @@ async function oneThread(name: string, config: Record<string, unknown> = {}) {
   const r = await withCoordinator(name, { config })
   r.host.userTurn(r.coordinator, 'start it')
   const started = await r.host.call(r.coordinator.id, 'thread_start', { title: 'Worker', brief: 'b' })
+  // The coordinator's turn ends: notices that wake it wait for that (they are never queued behind a running turn).
+  r.coordinator.endTurn()
   return { ...r, id: started['id'] as string, lead: r.host.agentOf(started['sessionId'] as string) }
 }
 

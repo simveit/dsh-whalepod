@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { rig, tick, withCoordinator } from './harness.ts'
+import { rig, tick, wakesOf, withCoordinator } from './harness.ts'
 
 async function pending(name: string) {
   const r = await withCoordinator(name)
@@ -85,7 +85,7 @@ test('Deny drops the thread and wakes the coordinator; it must not pick another 
   assert.deepEqual(await r.service.confirmFolder(row.id, 'deny'), { denied: row.id })
   assert.equal(r.service.listThreads().length, 0)
   await tick(40)
-  const wake = r.coordinator.received.filter(m => m.how === 'followup').map(m => m.message.content.map(c => c.text).join('')).join('\n')
+  const wake = wakesOf(r.coordinator).map(m => m.message.content.map(c => c.text).join('')).join('\n')
   assert.match(wake, /denied the folder .*do not pick another folder/)
   await assert.rejects(r.service.confirmFolder(row.id, 'maybe'), /must be "once", "always" or "deny"/)
   r.host.dispose()

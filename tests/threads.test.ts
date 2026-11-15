@@ -3,16 +3,18 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { TOOL } from '../src/host/names.ts'
-import { FakeHost, rig, scratch, tick, withCoordinator, type FakeAgent } from './harness.ts'
+import { FakeHost, rig, scratch, tick, quietOf, wakesOf, withCoordinator, type FakeAgent } from './harness.ts'
 
 const textOf = (m: { content: readonly { text: string }[] }) => m.content.map(c => c.text).join('\n')
 /** Coordinator messages that woke it (followup) and quiet ones (inject), after the opening message. */
-const wakes = (c: FakeAgent) => c.received.filter(r => r.how === 'followup' && !r.message.id.includes(':opening:'))
-const quiet = (c: FakeAgent) => c.received.filter(r => r.how === 'inject' && !r.message.id.startsWith('dsh-coordinator:role:'))
+const wakes = (c: FakeAgent) => wakesOf(c)
+const quiet = (c: FakeAgent) => quietOf(c)
 
 async function startOne(r: Awaited<ReturnType<typeof withCoordinator>>, args: Record<string, unknown> = {}) {
   r.host.userTurn(r.coordinator, 'Please start a thread to write hello.txt')
   const result = await r.host.call(r.coordinator.id, 'thread_start', { title: 'Write hello file', brief: 'Write hello.txt.', ...args })
+  // The coordinator's turn ends: notices that wake it wait for that (they are never queued behind a running turn).
+  r.coordinator.endTurn()
   await tick(1)
   return result
 }
@@ -55,6 +57,7 @@ test('notices: coordinator turns wake, user turns stay quiet, stops are not echo
   // A result report followed by the end of the turn: one wake carrying both.
   r.host.userTurn(r.coordinator, 'continue')
   await r.host.call(r.coordinator.id, 'thread_message', { thread: started['id'], text: 'Please continue.' })
+  r.coordinator.endTurn()
   await tick(1)
   thread.startTurn()
   await r.host.call(thread.id, 'coordinator_report', { kind: 'result', text: 'Wrote hello.txt' })
@@ -185,12 +188,13 @@ test('thread_message is an agent message in every path, delivered once per reque
   assert.match(String(queued['delivery']), /after the Assignment/)
   threadA.endTurn('completed', 'ok')
   await tick(5)
-  // Idle: a followup.
+  // Idle: a steer that starts a turn. Nothing is queued for the next turn, where the queue strip would show it.
   await r.host.call(r.coordinator.id, 'thread_message', { thread: a['id'], text: 'One more thing.' })
   await tick(5)
   const threadB = r.host.agentOf(b['sessionId'] as string)
   const toA = threadA.received.slice(1)
-  assert.deepEqual(toA.map(m => m.how), ['steer', 'steer', 'followup'])
+  assert.deepEqual(toA.map(m => [m.how, m.wake === true]), [['steer', false], ['steer', false], ['steer', true]])
+  assert.deepEqual([threadA.inbox.nextTurn.length, threadB.inbox.nextTurn.length], [0, 0])
   const toB = threadB.received
   assert.equal(toB[0]!.how, 'prompt', 'the brief')
   assert.equal(toB[1]!.message.source.kind, 'agent-message')
@@ -241,7 +245,7 @@ test('restore after a plugin reload: a running thread stays running and its end 
   await tick(30)
   assert.ok(wakes(first.coordinator).some(w => /Finished while reloaded/.test(textOf(w.message))))
   // H1: a brief re-queued across a reload is delivered as a coordinator notice, never as the user's prompt.
-  assert.equal(threadB.received[0]?.how, 'followup', 'the queued brief went out once a slot was free')
+  assert.deepEqual([threadB.received[0]?.how, threadB.received[0]?.wake], ['steer', true], 'the queued brief went out once a slot was free')
   assert.equal(threadB.received[0]?.message.source.kind, 'agent-message')
   second.host.dispose()
 })

@@ -4,8 +4,10 @@
  * Every thread change that the coordinator should hear about becomes a Notice. Notices are collected for a short
  * debounce window (bounded by a maximum delay) and delivered as one message, so a burst of events (a result report
  * followed by the end of the turn, or several threads finishing together) wakes the coordinator once. A batch wakes
- * the coordinator (followup) when any notice in it wants a wake; a batch of mere progress is injected without
- * waking it.
+ * the coordinator (it starts a turn of its chat) when any notice in it wants a wake; a batch of mere progress is
+ * injected without waking it. A batch that wakes while the chat runs a turn waits in the plugin until that turn has
+ * ended (`deliverTo` in threads.ts): nothing is queued in the chat, where dsh would show it as the user's own queued
+ * message.
  *
  * A report sent while the thread is still busy (`hold`) waits until the lead's turn has ended and its team members
  * are quiet, up to a hold limit: a real lead usually writes its final message after `coordinator_report`, sometimes
@@ -31,7 +33,7 @@ export interface Notice {
   coordinatorId?: string
   title: string
   at: number
-  /** Deliver with followup (wakes the coordinator) instead of inject. */
+  /** Wake the coordinator (start a turn of its chat, once it is idle) instead of adding the notice quietly. */
   wake: boolean
   /** A coordinator_report from the thread lead. */
   report?: ThreadReport
@@ -55,6 +57,12 @@ export interface Notice {
    * counted by the wake guard, is never held, and is dropped when the executor no longer works at delivery.
    */
   lookIn?: LookIn
+  /**
+   * Set while the notice is in the batch window and a turn of its coordinator's chat did not end normally
+   * (`NoticeBatcher.markTurnBroke`): it is then delivered like a notice that waited through that turn (`blocked` in
+   * threads.ts), not as a new one that starts the chat again right after the user stopped it.
+   */
+  turnBroke?: boolean
 }
 
 /** What a look-in notice carries: the coordinator's own focus, plugin counts, and what the executor wrote (shown in this order: latest message, Reports, todo list). */
@@ -154,6 +162,18 @@ export class NoticeBatcher {
       this.schedule()
     }
     if (ready.length > 0) this.options.flush(ready.map(p => p.notice))
+  }
+
+  /**
+   * A turn of a coordinator's chat ended: its notices that are in the batch window now are marked when the turn did
+   * not end normally (`Notice.turnBroke`), and the mark is taken off again when a later turn ended normally.
+   */
+  markTurnBroke(coordinatorId: string, broke: boolean): void {
+    for (const { notice } of this.pending) {
+      if (notice.coordinatorId !== coordinatorId) continue
+      if (broke) notice.turnBroke = true
+      else delete notice.turnBroke
+    }
   }
 
   /** Drop pending notices and timers (on unload). */

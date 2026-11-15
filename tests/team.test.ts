@@ -6,16 +6,18 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { deriveStatus, foldTurn, initialFacts, restoredFacts, persistedFacts, addMember, memberRunning, applyMemberEvent, memberSettled, SETTLE_GRACE_MS } from '../src/host/status.ts'
-import { rig, tick, withCoordinator, type FakeAgent } from './harness.ts'
+import { rig, tick, quietOf, wakesOf, withCoordinator, type FakeAgent } from './harness.ts'
 
 const textOf = (m: { content: readonly { text: string }[] }) => m.content.map(c => c.text).join('\n')
-const wakes = (c: FakeAgent) => c.received.filter(r => r.how === 'followup' && !r.message.id.includes(':opening:'))
-const quiet = (c: FakeAgent) => c.received.filter(r => r.how === 'inject' && !r.message.id.startsWith('dsh-coordinator:role:'))
+const wakes = (c: FakeAgent) => wakesOf(c)
+const quiet = (c: FakeAgent) => quietOf(c)
 
 async function startThread(r: Awaited<ReturnType<typeof withCoordinator>>, title = 'Build word count') {
   r.host.userTurn(r.coordinator, 'Please start a thread and use a team')
   const started = await r.host.call(r.coordinator.id, 'thread_start', { title, brief: 'Build it with a team.' })
   assert.equal(started['error'], undefined, String(started['error']))
+  // The coordinator's turn ends: notices that wake it wait for that (they are never queued behind a running turn).
+  r.coordinator.endTurn()
   await tick(1)
   return { id: started['id'] as string, lead: r.host.agentOf(started['sessionId'] as string) }
 }

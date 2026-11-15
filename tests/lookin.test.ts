@@ -6,10 +6,10 @@ import { TOOL } from '../src/host/names.ts'
 import { parseConfig } from '../src/host/ids.ts'
 import { FOCUS_MAX, formatNotices, isLookIn, LOOK_IN_PREVIEW, noticeMessages, type Notice, type Timers } from '../src/host/notices.ts'
 import { LOOK_IN_DEFER_MS, PROGRESS_NOTICES_MAX, PROGRESS_NOTICES_WINDOW_MS } from '../src/host/threads.ts'
-import { FakeHost, tick, withCoordinator, type FakeAgent } from './harness.ts'
+import { FakeHost, tick, wakesOf, withCoordinator, type FakeAgent } from './harness.ts'
 
 const textOf = (m: { content: readonly { text: string }[] }) => m.content.map(c => c.text).join('\n')
-const wakes = (c: FakeAgent) => c.received.filter(r => r.how === 'followup' && !r.message.id.includes(':opening:'))
+const wakes = (c: FakeAgent) => wakesOf(c)
 const lookIns = (c: FakeAgent) => wakes(c).filter(r => /your look-in/.test(textOf(r.message)))
 const MIN = 60_000
 
@@ -229,7 +229,7 @@ test('C2: executor_check_later right after executor_message to an idle or done e
   // The coordinator sends follow-up work and schedules the look-in in the same step, before the Lead's turn started.
   r.host.userTurn(r.coordinator, 'Now also write goodbye.txt.')
   const sent = await r.host.call(r.coordinator.id, TOOL.message, { executor: r.id, text: 'Also write goodbye.txt, with pnpm.' })
-  assert.match(String(sent['delivery']), /followup: the Executor Session starts a turn/)
+  assert.match(String(sent['delivery']), /^started: the Executor Session was idle and starts a turn/)
   assert.equal(r.lead.status, 'idle', 'its turn has not started yet')
   const scheduled = await r.host.call(r.coordinator.id, TOOL.checkLater, { executor: r.id, minutes: 10, focus: 'uses pnpm' })
   assert.deepEqual([scheduled['error'], scheduled['scheduled']], [undefined, true])

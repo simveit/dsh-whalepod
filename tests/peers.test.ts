@@ -1,18 +1,20 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { tick, withCoordinator, type FakeAgent } from './harness.ts'
+import { tick, quietOf, wakesOf, withCoordinator, type FakeAgent } from './harness.ts'
 import { TOOL } from '../src/host/names.ts'
 import { unknownRefMessage } from '../src/host/scope.ts'
 
 const textOf = (m: { content: readonly { text: string }[] }) => m.content.map(c => c.text).join('\n')
-const wakes = (c: FakeAgent) => c.received.filter(r => r.how === 'followup' && !r.message.id.includes(':opening:'))
-const quiet = (c: FakeAgent) => c.received.filter(r => r.how === 'inject' && !r.message.id.startsWith('dsh-coordinator:role:'))
+const wakes = (c: FakeAgent) => wakesOf(c)
+const quiet = (c: FakeAgent) => quietOf(c)
 
 async function twoThreads(name: string, config: Record<string, unknown> = {}) {
   const r = await withCoordinator(name, { config })
   r.host.userTurn(r.coordinator, 'Split this in two threads.')
   const a = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Write the word', brief: 'Write a.txt.' })
   const b = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Copy the word', brief: 'Ask A, write b.txt.' })
+  // The coordinator's turn ends: notices that wake it wait for that (they are never queued behind a running turn).
+  r.coordinator.endTurn()
   await tick(1)
   return { ...r, a, b, agentA: r.host.agentOf(a['sessionId'] as string), agentB: r.host.agentOf(b['sessionId'] as string) }
 }
@@ -79,11 +81,12 @@ test('no messages to self, unknown threads or the coordinator', async () => {
 
 test('delivery follows the target: idle starts a turn, stopped holds the message, queued waits for the brief', async () => {
   const r = await twoThreads('peer-states', { maxRunningThreads: 2 })
-  // Idle B: a followup through the slots; the turn it starts ends quietly for the coordinator.
+  // Idle B: through the slots, as a steer that starts a turn (never queued for the next turn, where the Executor
+  // Session's queue strip would show it); the turn it starts ends quietly for the coordinator.
   const idle = await r.host.call(r.agentA.id, TOOL.send, { thread: r.b['id'], text: 'hello' })
   assert.match(String(idle['delivery']), /starts a turn/)
   await tick(1)
-  assert.equal(r.agentB.received.at(-1)!.how, 'followup')
+  assert.deepEqual([r.agentB.received.at(-1)!.how, r.agentB.received.at(-1)!.wake, r.agentB.inbox.nextTurn.length], ['steer', true, 0])
   r.agentB.startTurn()
   r.agentB.endTurn('completed', 'read it')
   await tick(30)
@@ -97,7 +100,10 @@ test('delivery follows the target: idle starts a turn, stopped holds the message
   // A queued thread (cap reached) gets it after its brief.
   r.agentA.startTurn()
   r.agentB.startTurn()
-  // A fresh user turn (one that already carried thread notices would make the brief a notice, known limit 3).
+  // A fresh user turn (one that already carried thread notices would make the brief a notice, known limit 3): the
+  // quiet peer notices that arrived while the coordinator was idle are read in a turn before it.
+  r.coordinator.startTurn()
+  r.coordinator.endTurn()
   r.host.userTurn(r.coordinator, 'Start a third one.')
   const c = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Third', brief: 'x' })
   const queued = await r.host.call(r.agentA.id, TOOL.send, { thread: c['id'], text: 'for you' })

@@ -27,9 +27,21 @@ export class FakeAgent {
   denied: readonly string[] | undefined
   readonly ctx: { tools: { restrict: (filter: { allow?: readonly string[]; deny?: readonly string[] }) => () => void } }
   readonly log: LogEvent[] = []
+  /**
+   * dsh's pending input. `nextTurn` is what the web client shows in the queue strip above the composer, with edit,
+   * delete and send controls, whatever the source of a message: a `followup` to a running agent lands here and stays
+   * until a test takes it out. `nextStep` holds only steering the user parked (`parkUserSteer`); what the plugin
+   * injects is kept in `pendingInjects`.
+   */
   readonly inbox = { nextTurn: [] as UserMessage[], nextStep: [] as UserMessage[] }
-  /** Every message handed to the agent, with how. */
-  readonly received: { how: 'followup' | 'steer' | 'inject' | 'prompt'; message: UserMessage }[] = []
+  /**
+   * Every message handed to the agent, with how. `wake` marks the messages of a delivery that started a turn: a
+   * `followup` or `steer` to an idle agent, and the injects handed over in the same synchronous burst before it, which
+   * dsh admits in the first step of the turn it starts.
+   */
+  readonly received: { how: 'followup' | 'steer' | 'inject' | 'prompt'; message: UserMessage; wake?: boolean }[] = []
+  /** The injects of the current synchronous burst, while the agent is idle. */
+  private burst: { how: 'followup' | 'steer' | 'inject' | 'prompt'; message: UserMessage; wake?: boolean }[] = []
   selected: { provider: string; model: string } | undefined
   readonly model = {
     current: () => this.selected ?? { provider: 'p', model: 'm' },
@@ -84,19 +96,40 @@ export class FakeAgent {
   readonly pendingInjects: UserMessage[] = []
 
   private take(how: 'followup' | 'steer' | 'inject' | 'prompt', message: UserMessage): void {
-    this.received.push({ how, message })
+    const entry: { how: 'followup' | 'steer' | 'inject' | 'prompt'; message: UserMessage; wake?: boolean } = { how, message }
+    this.received.push(entry)
     if (how === 'followup' && message.id.startsWith('dsh-coordinator:opening:')) {
       // As rc.2 with the plugin's opening-turn gate: the turn starts and ends, its step enters with no messages, so
       // the opening message itself is never logged.
+      entry.wake = true
       this.append('turn/start', { turn: 1 })
       this.append('turn/end', { reason: { kind: 'completed' } })
+      return
+    }
+    if (how === 'followup' && this.status === 'running') {
+      // dsh queues it for the next turn: it is not logged until that turn claims it, and the queue strip shows it.
+      this.inbox.nextTurn.push(message)
+      this.append('agent/inbox/spliced', { target: 'next-turn', start: this.inbox.nextTurn.length - 1, inserted: [message] })
       return
     }
     if (how === 'inject' && this.status !== 'running') {
       // dsh splices an inject into the inbox at once and logs it as a user/message only when a step admits it.
       this.pendingInjects.push(message)
+      if (this.burst.length === 0) queueMicrotask(() => { this.burst = [] })
+      this.burst.push(entry)
       this.append('agent/inbox/spliced', { target: 'next-step', start: 0, inserted: [message] })
       return
+    }
+    if ((how === 'followup' || how === 'steer') && this.status !== 'running') {
+      // The message starts a turn, and dsh admits the pending next-step messages with it in that turn's first step.
+      // The fake starts no turn of its own; it logs the injects of this burst before the message, in dsh's order.
+      entry.wake = true
+      for (const injected of this.burst.splice(0)) {
+        injected.wake = true
+        const at = this.pendingInjects.indexOf(injected.message)
+        if (at >= 0) this.pendingInjects.splice(at, 1)
+        this.append('user/message', injected.message)
+      }
     }
     this.append('user/message', message)
   }
@@ -117,12 +150,54 @@ export class FakeAgent {
   steer(message: UserMessage): void { this.take('steer', message) }
   inject(message: UserMessage): void { this.take('inject', message) }
   prompt(message: UserMessage): void { this.take('prompt', message) }
-  /** As dsh: resolves once no turn runs (tests end a turn with endTurn or by setting `status`). */
+  /** Callers of `whenIdle` that wait for the running turn to end. */
+  private readonly idleWaiters: (() => void)[] = []
+  /**
+   * As dsh: resolves once no turn runs. A turn that tests end with `endTurn` resolves it right after the
+   * `agent/status` event, before anything that event started asynchronously (as dsh resolves its driver promise);
+   * a test that sets `status` directly is seen by the poll.
+   */
   whenIdle(): Promise<void> {
     return new Promise((resolve) => {
+      if (this.status === 'idle') { resolve(); return }
+      this.idleWaiters.push(resolve)
       const check = (): void => { if (this.status === 'idle') resolve(); else (setTimeout(check, 1) as { unref?: () => void }).unref?.() }
       check()
     })
+  }
+
+  /** The user sends a message while a turn runs: dsh queues it for the next turn (it shows in the queue strip). */
+  queueUserMessage(text: string): UserMessage {
+    const message = { id: `u-${++counter}`, role: 'user' as const, content: [{ type: 'text' as const, text }], source: { kind: 'user', rpcId: `browser-${counter}` } } as UserMessage
+    this.inbox.nextTurn.push(message)
+    this.append('agent/inbox/spliced', { target: 'next-turn', start: this.inbox.nextTurn.length - 1, inserted: [message] })
+    return message
+  }
+
+  /**
+   * The user steered a queued message (or pressed Cmd/Ctrl+Enter) and stopped the turn before its next step: dsh
+   * keeps the message in the next-step list of the idle agent, as steering of the user that is still pending.
+   */
+  parkUserSteer(text: string): UserMessage {
+    const message = { id: `u-${++counter}`, role: 'user' as const, content: [{ type: 'text' as const, text }], source: { kind: 'user', rpcId: `browser-${counter}` } } as UserMessage
+    this.inbox.nextStep.push(message)
+    this.append('agent/inbox/spliced', { target: 'next-step', start: this.inbox.nextStep.length - 1, inserted: [message] })
+    return message
+  }
+
+  /**
+   * As dsh's driver after a completed turn: the next queued message opens the next turn without the agent going idle
+   * in between (no `agent/status` event). Returns the message, or undefined when nothing is queued.
+   */
+  nextQueuedTurn(): UserMessage | undefined {
+    const message = this.inbox.nextTurn.shift()
+    if (message === undefined) return undefined
+    this.append('turn/end', { reason: { kind: 'completed' } })
+    this.append('turn/start', { turn: 1 })
+    this.append('step/start', { turn: 1, step: 1 })
+    this.admitInjects()
+    this.append('user/message', message)
+    return message
   }
 
   /** Simulate a turn: start, optional events, end. */
@@ -138,6 +213,7 @@ export class FakeAgent {
     this.append('turn/end', { reason: { kind } })
     this.status = 'idle'
     this.host.emit('agent/status', { agent: this, status: 'idle' })
+    for (const resolve of this.idleWaiters.splice(0)) resolve()
   }
 }
 
@@ -520,6 +596,11 @@ export class FakeHost {
 }
 
 export const tick = (ms = 0) => new Promise(r => setTimeout(r, ms))
+
+/** The messages that woke an agent (see `FakeAgent.received`), after a coordinator chat's opening message. */
+export const wakesOf = (agent: FakeAgent) => agent.received.filter(r => r.wake === true && !r.message.id.includes(':opening:'))
+/** The messages an agent got without being woken (inject), apart from a coordinator's role mark. */
+export const quietOf = (agent: FakeAgent) => agent.received.filter(r => r.how === 'inject' && r.wake !== true && !r.message.id.startsWith('dsh-coordinator:role:'))
 
 export interface Rig {
   host: FakeHost

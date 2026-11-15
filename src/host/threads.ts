@@ -73,8 +73,16 @@ const MODEL_CHECK_MS = 5000
 /** Caps on what one report or message may store and carry. */
 const REPORT_TEXT_MAX = 4000
 const MESSAGE_TEXT_MAX = 20000
-/** Notices kept per coordinator while its chat is archived or gone. */
-const ORPHAN_NOTICES_MAX = 50
+/**
+ * Notices kept per coordinator in each of its two lists: while its chat is archived or gone (`held`) and while its
+ * chat cannot take them (`waiting`). One bound for both, so notices that move from one list to the other are not
+ * cut on the way. Past it the oldest quiet ones go first, then the oldest, and the log says how many (`capNotices`).
+ */
+export const KEPT_NOTICES_MAX = 200
+/** How often notices that wait for the end of a coordinator's turn are looked at again, should its idle event be missed. */
+export const WAITING_RECHECK_MS = 30_000
+/** How often a delivery of waiting notices that failed is tried again before they are dropped, with a log line. */
+const WAITING_RETRIES_MAX = 5
 /** Longest a waking report waits for the end of the lead's turn, and while team members still work. */
 const REPORT_HOLD_MS = 120_000
 const TEAM_HOLD_MS = 600_000
@@ -190,6 +198,27 @@ interface CoordinatorRecord extends Omit<PersistedCoordinator, 'pastSessionIds'>
   pastSessionIds: string[]
   /** Live: notices kept while its chat is archived or gone; handed over when it is open again. */
   held: Notice[]
+  /**
+   * Live: notices kept while its chat runs a turn, oldest first, each with its own `wake`. dsh shows every message
+   * queued for an Agent's next turn in the composer's queue strip, where the user can edit, delete or send it, so the
+   * plugin queues nothing there: these go to the chat when its turn has ended (`deliverTo`).
+   */
+  waiting?: Notice[]
+  /** Live: the timer that looks at `waiting` again. */
+  waitingTimer?: unknown
+  /**
+   * Live: how many notices at the front of `waiting` were there when a turn of the chat did not end normally (the
+   * user stopped it, it failed or was blocked). After such a turn the user decides what happens next: dsh runs no
+   * queued input, and the plugin neither starts a turn for these notices nor adds them to the chat, where they would
+   * enter the first step of the user's next request and make it count as one that follows a notice. They stay in
+   * `waiting` until a turn of the chat has ended normally, or until a new notice wakes the chat and takes them
+   * along. A notice that arrives after the broken turn is not counted here, so it wakes as usual. One that was made
+   * before the turn broke and was still in the batch window then joins them when its batch goes out
+   * (`Notice.turnBroke`, `blockNotices`).
+   */
+  blocked?: number
+  /** Live: deliveries of the waiting notices that failed in a row (`WAITING_RETRIES_MAX`). */
+  waitingFailures?: number
   /** Live: whether its model can run. */
   health?: ModelHealth
   /** Live: why its folder is refused (thread_start refuses until the user changes it). */
@@ -584,6 +613,7 @@ export class ThreadService implements ThreadOps {
       // Sessions to full access; at app quit the next load puts the chosen mode back.
       this.applyPermissions(true)
       this.liftRestrictions()
+      this.handOverWaiting()
       this.disposed = true
       this.batcher.dispose()
       if (this.saveTimer !== undefined) clearTimeout(this.saveTimer)
@@ -1272,6 +1302,7 @@ export class ThreadService implements ThreadOps {
       if (this.ctx.agents.get(id) !== candidate.agent || this.isArchived(id)) this.candidates.delete(id)
     }
     for (const coord of this.coordinators.values()) if (coord.held.length > 0 && this.chatLive(coord)) this.handHeld(coord)
+    for (const coord of this.coordinators.values()) if (!this.coordinatorTaken(coord.id)) this.flushWaiting(coord)
     const problems = this.hostProblems()
     const last = this.lastCoordinator()
     return {
@@ -1861,7 +1892,12 @@ export class ThreadService implements ThreadOps {
         return
       }
       const rec = this.bySession.get(agent.id)
-      if (rec === undefined) return
+      if (rec === undefined) {
+        // A coordinator's chat went idle: the notices that waited for the end of its turn go out now.
+        const coord = status === 'idle' ? this.coordinatorBySession.get(agent.id) : undefined
+        if (coord !== undefined) this.flushWaiting(coord)
+        return
+      }
       this.update(rec, facts => (facts.running === (status === 'running') ? facts : { ...facts, running: status === 'running' }))
       this.slots.pump()
       if (status === 'idle') this.batcher.kick()
@@ -1872,8 +1908,11 @@ export class ThreadService implements ThreadOps {
     ctx.on('workspace/session-archived' as never, (({ sessionId }: { sessionId: SessionId }) => {
       if (this.disposed) return
       if (this.candidates.delete(sessionId)) return
-      if (this.coordinatorBySession.has(sessionId)) {
+      const owner = this.coordinatorBySession.get(sessionId)
+      if (owner !== undefined) {
         if (!this.archivingChats.has(sessionId)) say(`coordinator session ${sessionId} was archived by the user; its notices are held until it is reopened`)
+        // Notices that waited for a turn of this chat join the held ones now: nothing else may come by to move them.
+        this.holdNotices(owner, [])
         this.bump()
         return
       }
@@ -1901,6 +1940,20 @@ export class ThreadService implements ThreadOps {
     if (coord === undefined) return false
     // A new turn has not met an executor's memory text yet (see `executorMemoryInTurn`).
     if (event.type === 'turn/start') delete coord.executorMemoryInTurn
+    if (event.type === 'turn/end') {
+      // How the chat's turn ended decides what becomes of the notices that waited for it (see `blocked`) and of
+      // those still in the batch window (`Notice.turnBroke`). After a turn that ended normally nothing is blocked
+      // any more: the idle chat gets them, and the timer looks again.
+      const waiting = coord.waiting?.length ?? 0
+      const broke = this.turnBroke(event)
+      this.batcher.markTurnBroke(coord.id, broke)
+      if (broke) {
+        if (waiting > 0) coord.blocked = waiting
+      } else if (coord.blocked !== undefined) {
+        delete coord.blocked
+        this.keepWaiting(coord, [])
+      }
+    }
     const typed = event.type === 'user/message' ? event.data as UserMessage | undefined : undefined
     if (typed?.source !== undefined && this.userTyped(typed)) {
       // The user wrote in this coordinator's chat: the look-in caps of its executors start over (decision 66). Nothing
@@ -2006,6 +2059,12 @@ export class ThreadService implements ThreadOps {
   private userStop(event: SessionEvent): boolean {
     const reason = ((event.data ?? {}) as { reason?: { kind?: unknown; reason?: { kind?: unknown } } }).reason
     return reason?.kind === 'aborted' && reason.reason?.kind === 'user'
+  }
+
+  /** Whether a turn ended in a way after which dsh runs no queued input: stopped, failed or blocked. */
+  private turnBroke(event: SessionEvent): boolean {
+    const kind = ((event.data ?? {}) as { reason?: { kind?: unknown } }).reason?.kind
+    return kind === 'aborted' || kind === 'error' || kind === 'blocked' || kind === 'interrupted'
   }
 
   /** Session ids of the members of a thread's tree that still run. */
@@ -3038,6 +3097,8 @@ export class ThreadService implements ThreadOps {
     this.bump()
     this.saveNow()
     if (model !== undefined) await this.seedCoordinator(agent, coord.id)
+    // Notices that still waited for a turn of the replaced chat are handed to the new one with the held ones.
+    this.holdNotices(coord, [])
     this.handHeld(coord)
     say(`coordinator ${coord.id}: new chat session ${agent.id}`)
     return { coordinatorId: coord.id, sessionId: agent.id }
@@ -3798,13 +3859,24 @@ export class ThreadService implements ThreadOps {
     // answer given on the plugin's card can reach the model's question. So the card is raised only once the
     // coordinator's turn is over and only when that turn asked the user nothing; a question the model asks while the
     // card is open withdraws the card (see coordinatorEvent). The row buttons on the page and in the pane stay.
-    try {
-      await Promise.race([coordinator.whenIdle(), new Promise<void>((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('withdrawn')), { once: true }))])
-    } catch {
-      if (rec.confirmCard === controller) delete rec.confirmCard
-      return
+    const withdrawn = new Promise<void>((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('withdrawn')), { once: true }))
+    withdrawn.catch(() => undefined)
+    let asked = false
+    // Notices that waited for the end of the coordinator's turn open a turn of their own right when it ends
+    // (`deliverTo`), where dsh used to run them from its queue before the chat went idle. The card waits for that
+    // turn as well: a few rounds at most, then the row buttons remain.
+    for (let round = 0; ; round++) {
+      try {
+        await Promise.race([coordinator.whenIdle(), withdrawn])
+      } catch {
+        if (rec.confirmCard === controller) delete rec.confirmCard
+        return
+      }
+      // Let a delivery that the idle chat just triggered start its turn first.
+      if ((this.coordinators.get(rec.info.coordinatorId)?.waiting?.length ?? 0) > 0) await new Promise(resolve => setTimeout(resolve, 0))
+      asked = await this.turnAskedUser(owner!)
+      if (coordinator.status !== 'running' || round >= 8 || controller.signal.aborted || this.disposed) break
     }
-    const asked = await this.turnAskedUser(owner!)
     // D4: checked again right before the card goes up: still wanted, not withdrawn, and the coordinator still idle.
     if (asked || controller.signal.aborted || rec.facts.confirm === undefined || this.disposed || coordinator.status === 'running'
       || this.ctx.agents.get(coordinator.id) !== coordinator) {
@@ -4275,11 +4347,18 @@ export class ThreadService implements ThreadOps {
   }
 
   /**
-   * Deliver text to a thread lead once per request key: steer a running lead, otherwise queue a turn.
+   * Deliver text to a thread lead once per request key: it joins a running Lead's turn at its next step, and starts a
+   * turn of an idle one.
+   *
+   * An agent message always goes to the Lead's next-step list (`steer`, or `inject` when it must not wake), never
+   * to its next-turn list: dsh shows that list in the queue strip above the Executor Session's composer, where the
+   * user could edit, delete or send the plugin's message as if they had queued it. `steer` on an idle Agent starts a
+   * turn whose first step admits the message. Only an Assignment with the user's authority is a prompt
+   * (`sessionController.prompt`): it is recorded as the user's message on purpose, and it goes to a Lead that is idle.
    * @param as - `user` records a prompt (only for a brief with user authority); `notice` an agent message.
    * @param sender - session the agent message is attributed to (the coordinator, or a peer thread).
    */
-  private async deliver(rec: ThreadRecord, text: string, as: 'user' | 'notice', requestKey: string, sender?: string, quiet = false): Promise<'followup' | 'steer' | 'inject' | 'duplicate'> {
+  private async deliver(rec: ThreadRecord, text: string, as: 'user' | 'notice', requestKey: string, sender?: string, quiet = false): Promise<'start' | 'steer' | 'inject' | 'duplicate'> {
     if (this.autoGone.has(rec.info.id)) throw new Error(`Executor Session ${rec.info.id} cannot run: ${AUTO_GONE}`)
     const agent = await this.agent(rec.info.sessionId)
     // A paused thread gets its input without waking (M5); it reads it when the user resumes it.
@@ -4300,7 +4379,7 @@ export class ThreadService implements ThreadOps {
         requestId, sessionId: rec.info.sessionId, mode, content: [{ type: 'text', text }],
         ...(this.timeZone === undefined ? {} : { clientTimeZone: this.timeZone }),
       }, AbortSignal.timeout(30000))
-      return mode === 'steer' ? 'steer' : 'followup'
+      return mode === 'steer' ? 'steer' : 'start'
     }
     const pending = [...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(m => m.id === requestId)
     if (this.delivered.has(requestId) || pending) return 'duplicate'
@@ -4312,11 +4391,10 @@ export class ThreadService implements ThreadOps {
       id: requestId, role: 'user' as const, content: Object.freeze([Object.freeze({ type: 'text' as const, text })]),
       source: Object.freeze({ kind: 'agent-message', form: 'relay', senderSessionId: sender ?? coordinatorSession ?? MESSAGE_SOURCE }),
     })
-    if (mode === 'steer') agent.steer(message)
-    else if (mode === 'inject') agent.inject(message)
-    else agent.followup(message)
+    if (mode === 'inject') agent.inject(message)
+    else agent.steer(message)
     this.delivered.add(requestId)
-    return mode === 'queue' ? 'followup' : mode
+    return mode === 'queue' ? 'start' : mode
   }
 
   async messageThread(caller: SessionId, ref: string, text: string, requestKey: string, _signal: AbortSignal): Promise<{ thread: string; delivery: string }> {
@@ -4344,7 +4422,7 @@ export class ThreadService implements ThreadOps {
     // working for `executor_check_later`, which the coordinator may call right after this message.
     rec.turnExpected = true
     const started = this.slots.submit({ threadId: thread, start: async () => { await this.deliver(rec, body, 'notice', key) } })
-    return { thread, delivery: started ? 'followup: the Executor Session starts a turn' : `queued: ${this.config.maxRunningThreads} Executor Sessions are running` }
+    return { thread, delivery: started ? 'started: the Executor Session was idle and starts a turn with the message' : `queued: ${this.config.maxRunningThreads} Executor Sessions are running` }
   }
 
   async readThread(caller: SessionId, ref: string, mode: 'summary' | 'recent' | 'full', cursor: number | undefined, signal: AbortSignal): Promise<unknown> {
@@ -4652,7 +4730,7 @@ export class ThreadService implements ThreadOps {
       return { to: to.info.id, delivery: `held: Executor Session ${to.info.id} is ${to.info.status}; it reads the message when it next runs` }
     }
     const started = this.slots.submit({ threadId: to.info.id, start: async () => { await this.deliver(to, body, 'notice', key, from.info.sessionId) } })
-    return { to: to.info.id, delivery: started ? 'followup: the Executor Session starts a turn to read it' : `queued: ${this.config.maxRunningThreads} Executor Sessions are running` }
+    return { to: to.info.id, delivery: started ? 'started: the Executor Session was idle and starts a turn to read it' : `queued: ${this.config.maxRunningThreads} Executor Sessions are running` }
   }
 
   // --- Look-ins (decision 66) ---------------------------------------------------------------------------------------
@@ -4674,10 +4752,29 @@ export class ThreadService implements ThreadOps {
     delete rec.lookIn
   }
 
-  /** Whether the coordinator that owns this executor runs a turn now (a due look-in waits for it). */
+  /** Whether a coordinator's chat runs a turn now (text an executor writes then reaches that turn). */
   private coordinatorBusy(coordinatorId: string): boolean {
     const coord = this.coordinators.get(coordinatorId)
     return coord !== undefined && coord.sessionId !== null && this.ctx.agents.get(coord.sessionId)?.status === 'running'
+  }
+
+  /**
+   * Whether a chat cannot take a turn of the plugin's now: it runs one, or it is idle with input of the user that
+   * dsh keeps pending after a turn that was stopped or failed. That is a message in the next-turn list (the queue
+   * strip), or steering of the user in the next-step list (they steered a queued message, or pressed
+   * Cmd/Ctrl+Enter, and the turn was stopped before its next step; dsh counts both as pending human input). A turn
+   * the plugin started then would send that input for the user. The one rule for a waking notice and for a look-in.
+   */
+  private chatTaken(agent: Agent | undefined): boolean {
+    if (agent === undefined) return false
+    return agent.status === 'running' || agent.inbox.nextTurn.length > 0
+      || agent.inbox.nextStep.some(m => m.source?.kind === 'user')
+  }
+
+  /** `chatTaken` for the chat of the coordinator with this id (a due look-in waits while it holds). */
+  private coordinatorTaken(coordinatorId: string): boolean {
+    const coord = this.coordinators.get(coordinatorId)
+    return coord !== undefined && coord.sessionId !== null && this.chatTaken(this.ctx.agents.get(coord.sessionId))
   }
 
   /**
@@ -4732,9 +4829,9 @@ export class ThreadService implements ThreadOps {
   /**
    * A due look-in. Dropped when the coordinator's chat is closed. An executor that is not working is looked at once
    * more after `LOOK_IN_DEFER_MS` (it may be between two turns of its Lead), then the look-in is dropped. It waits
-   * again while the coordinator runs a turn. Otherwise it becomes a waking `lookIn` notice with the Lead's todo list
-   * (from its log) and previews of its latest Reports and message. The look-in stays pending (`due`) until that
-   * notice is delivered or dropped, so a cancel or a new schedule still reaches it.
+   * again while the coordinator's chat cannot take a turn (`chatTaken`). Otherwise it becomes a waking `lookIn`
+   * notice with the Lead's todo list (from its log) and previews of its latest Reports and message. The look-in
+   * stays pending (`due`) until that notice is delivered or dropped, so a cancel or a new schedule still reaches it.
    */
   private async fireLookIn(rec: ThreadRecord, lookIn: PendingLookIn): Promise<void> {
     if (this.disposed || rec.lookIn !== lookIn) return
@@ -4747,7 +4844,8 @@ export class ThreadService implements ThreadOps {
       lookIn.timer = this.armLookIn(rec, lookIn, LOOK_IN_DEFER_MS)
       return
     }
-    if (this.coordinatorBusy(coord.id)) { lookIn.timer = this.armLookIn(rec, lookIn, LOOK_IN_DEFER_MS); return }
+    // Before the Lead's log is read: a chat that cannot take a turn now (`chatTaken`) is asked again later.
+    if (this.coordinatorTaken(coord.id)) { lookIn.timer = this.armLookIn(rec, lookIn, LOOK_IN_DEFER_MS); return }
     let todos: TodoItem[] | undefined
     try {
       todos = latestTodos((await this.ctx.sessionQuery.readSession(rec.info.sessionId)).events)
@@ -4772,8 +4870,8 @@ export class ThreadService implements ThreadOps {
   /**
    * Look-ins at delivery. One that was cancelled or replaced since it came due is dropped. One whose executor also
    * has another waking notice in the batch is dropped (that notice wakes the coordinator anyway). One whose
-   * coordinator is running a turn now goes back to its timer for `LOOK_IN_DEFER_MS`: it stays the executor's pending
-   * look-in, so a cancel reaches it, and its content is collected again when it next comes due.
+   * coordinator's chat cannot take a turn now goes back to its timer for `LOOK_IN_DEFER_MS`: it stays the
+   * executor's pending look-in, so a cancel reaches it, and its content is collected again when it next comes due.
    */
   private lookInsReady(batch: Notice[]): Notice[] {
     const waking = new Set(batch.filter(n => n.wake && n.lookIn === undefined).map(n => n.threadId))
@@ -4783,7 +4881,7 @@ export class ThreadService implements ThreadOps {
       const lookIn = rec?.lookIn
       if (rec === undefined || lookIn === undefined || lookIn.due !== notice.lookIn) return false
       if (waking.has(notice.threadId)) { delete rec.lookIn; return false }
-      if (!this.coordinatorBusy(notice.coordinatorId ?? rec.info.coordinatorId)) return true
+      if (!this.coordinatorTaken(notice.coordinatorId ?? rec.info.coordinatorId)) return true
       delete lookIn.due
       lookIn.timer = this.armLookIn(rec, lookIn, LOOK_IN_DEFER_MS)
       return false
@@ -4860,7 +4958,27 @@ export class ThreadService implements ThreadOps {
     for (const [owner, notices] of groups) await this.deliverTo(owner, notices)
   }
 
-  /** Deliver one coordinator's notices to its chat, or hold them while the chat is archived or gone. */
+  /**
+   * Deliver one coordinator's notices to its chat, or keep them on the record: while the chat is archived or gone
+   * (`held`), and while the chat cannot take them (`waiting`).
+   *
+   * Nothing of the plugin's is ever queued for the chat's next turn. dsh shows every message in an Agent's next-turn
+   * list in the queue strip above the composer, whatever its source, with controls to edit, delete and send it, as
+   * if the user had queued it (dsh-client-ui-conversation `QueueDock`). So a batch that wakes waits in the plugin
+   * while the chat runs a turn, and later notices of that coordinator wait behind it, in order. When the chat is
+   * idle, the waiting notices and the new ones go out together into the Agent's next-step list, which dsh does not
+   * show: all messages but the last with `inject`, the last with `steer`, which starts one turn whose first step
+   * admits all of them in order. Quiet notices alone are added with `inject`, as before, also to a running turn.
+   *
+   * An idle chat with input of the user that dsh keeps pending counts as running (`chatTaken`): the plugin never
+   * starts or joins it. Notices that waited through a turn the user stopped, or one that failed or was blocked,
+   * keep waiting (`blocked`): they are neither started nor added to the chat, so the user's next request runs
+   * without them and keeps the user's authority. They go out, as a turn of their own, when a turn of the chat has
+   * ended normally and the chat is idle, or together with a new notice that wakes the chat. A notice that was still
+   * in the batch window when such a turn ended counts as one that waited through it (`Notice.turnBroke`): a result
+   * reported a moment before the user pressed Stop does not start the chat again a moment after.
+   * `input` may be empty: then only the waiting notices are looked at (`flushWaiting`).
+   */
   private async deliverTo(coordinatorId: string, input: Notice[]): Promise<void> {
     const coord = this.coordinators.get(coordinatorId)
     if (coord === undefined) {
@@ -4872,12 +4990,20 @@ export class ThreadService implements ThreadOps {
       this.settleLookIns(input, false)
       input = input.filter(n => n.lookIn === undefined)
     }
-    if (input.length === 0) return
+    // Notices that were in the batch window when a turn of the chat broke (`Notice.turnBroke`) are not new: they
+    // join the blocked ones. A look-in never waits; it is delivered or sent back to its timer below.
+    const late = input.filter(n => n.turnBroke === true && n.lookIn === undefined).map(({ turnBroke: _mark, ...notice }) => notice)
+    if (late.length > 0) input = input.filter(n => n.turnBroke !== true || n.lookIn !== undefined)
+    const waited = (): Notice[] => coord.waiting ?? []
+    if (input.length === 0 && late.length === 0 && waited().length === 0) return
     if (!this.chatLive(coord)) {
-      coord.held = [...coord.held, ...input].slice(-ORPHAN_NOTICES_MAX)
-      say(`kept ${input.length} notices until the chat of coordinator ${coord.id} is open again`)
+      this.holdNotices(coord, [...late, ...input])
+      say(`kept ${coord.held.length} notices until the chat of coordinator ${coord.id} is open again`)
       return
     }
+    if (late.length > 0) this.blockNotices(coord, late)
+    // Nothing new, and what waits is blocked until a turn of the chat ends normally: no need to ask for its Agent.
+    if (input.length === 0 && !this.disposed && this.waitsForTurn(coord, input)) return
     // L1: the chat's Agent first; when it cannot be had (the Session was deleted, not archived), the notices are held.
     let agent: Agent
     try {
@@ -4885,44 +5011,209 @@ export class ThreadService implements ThreadOps {
     } catch (error) {
       if (coord.sessionId !== null) this.chatMissing.add(coord.sessionId)
       this.settleLookIns(input, false)
-      coord.held = [...coord.held, ...input.filter(n => n.lookIn === undefined)].slice(-ORPHAN_NOTICES_MAX)
-      say(`kept ${input.length} notices of coordinator ${coord.id}: its chat is not available (${errorText(error)})`)
+      this.holdNotices(coord, input.filter(n => n.lookIn === undefined))
+      say(`kept ${coord.held.length} notices of coordinator ${coord.id}: its chat is not available (${errorText(error)})`)
       return
     }
     // A look-in cancelled or replaced while this delivery waited (for the Agent, or for another coordinator's
     // delivery before it) is not sent: the coordinator was told it is gone.
     input = input.filter(n => n.lookIn === undefined || this.records.get(n.threadId)?.lookIn?.due === n.lookIn)
-    if (input.length === 0) return
+    // From here to the hand-over nothing is awaited, so the chat cannot start a turn in between. A delivery that
+    // was under way when the plugin unloaded waits for nothing: its notices are added without starting a turn.
+    if (!this.disposed && this.chatTaken(agent) && (waited().length > 0 || input.some(n => n.wake))) {
+      // The chat runs a turn, or holds input of the user: a look-in goes back to its timer (it is collected again
+      // when it next comes due), the rest waits.
+      for (const notice of input) {
+        const lookIn = notice.lookIn === undefined ? undefined : this.records.get(notice.threadId)?.lookIn
+        if (lookIn === undefined) continue
+        delete lookIn.due
+        lookIn.timer = this.armLookIn(this.records.get(notice.threadId)!, lookIn, LOOK_IN_DEFER_MS)
+      }
+      this.keepWaiting(coord, input.filter(n => n.lookIn === undefined))
+      return
+    }
+    // A status notice that waited and no longer holds (the executor runs again, its question was answered) is dropped.
+    this.dropStaleWaiting(coord)
+    // Blocked notices and nothing new that wakes: they keep waiting, and quiet ones that arrive wait behind them.
+    if (!this.disposed && this.waitsForTurn(coord, input)) {
+      this.keepWaiting(coord, input)
+      return
+    }
+    const waiting = this.takeWaiting(coord)
     // Notices held while the chat was archived ride along as background.
-    const batch = [...coord.held.map(n => ({ ...n, wake: false, hold: false })), ...input]
+    const batch = [...coord.held.map(n => ({ ...n, wake: false, hold: false })), ...waiting, ...input]
     coord.held = []
-    const { text, wake, summary } = formatNotices(batch)
+    if (batch.length === 0) return
+    // The executors whose message reached the chat; `undefined` once the one message of a quiet batch did.
+    let handed: Set<string> | undefined = new Set<string>()
+    try {
+      const { messages, wake } = this.noticesFor(batch)
+      // Next-step only (see above): `inject` adds without waking, the last `steer` starts the turn that admits them all.
+      const start = wake && !this.disposed
+      messages.forEach(({ message, threadId }, index) => {
+        if (start && index === messages.length - 1) agent.steer(message)
+        else agent.inject(message)
+        if (threadId === undefined) handed = undefined
+        else handed?.add(threadId)
+      })
+      if (wake && !start) say(`added ${messages.length} notices to the chat of coordinator ${coord.id} without starting a turn`)
+      delete coord.waitingFailures
+      this.settleLookIns(input, true)
+    } catch (error) {
+      this.settleLookIns(input, false)
+      // Their Reports already count as delivered and are never sent again, so what did not reach the chat goes back
+      // to the front of the waiting list, in order, and is tried again (a look-in is collected anew by its timer).
+      const left = handed === undefined ? [] : batch.filter(n => n.lookIn === undefined && !handed!.has(n.threadId))
+      const failures = (coord.waitingFailures ?? 0) + 1
+      if (left.length === 0 || this.disposed || failures > WAITING_RETRIES_MAX) {
+        delete coord.waitingFailures
+        const lost = left.length === 0 ? '' : `; dropped ${left.length} notices ${this.disposed ? 'on unload' : `after ${failures} failed deliveries`}`
+        say(`could not deliver notices to coordinator ${coord.id}: ${errorText(error)}${lost}`)
+        return
+      }
+      coord.waitingFailures = failures
+      say(`could not deliver notices to coordinator ${coord.id}: ${errorText(error)}; ${left.length} notices wait and are tried again`)
+      const later = this.takeWaiting(coord)
+      this.keepWaiting(coord, [...left, ...later])
+    }
+  }
+
+  /**
+   * A batch as the messages the coordinator's chat gets. A batch that wakes is one message per thread, attributed
+   * to the thread's session with dsh's agent-to-agent source: the chat shows each as a task message, and all of them
+   * open the same coordinator turn; a quiet notice in the same batch rides along in its thread's message. A look-in
+   * (alone or with quiet progress of its executor) is a collapsed notice row with its one-line summary, not a message
+   * from the executor. A quiet batch is one message of background context: a collapsed row with the one-line summary.
+   * Each message names the executor it is about (`threadId`); the one message of a quiet batch names none.
+   */
+  private noticesFor(batch: readonly Notice[]): { messages: { message: UserMessage; threadId?: string }[]; wake: boolean } {
     const make = (body: string, source: Record<string, unknown>): UserMessage => Object.freeze({
       id: `${MESSAGE_SOURCE}:notice:${randomUUID()}`, role: 'user' as const,
       content: Object.freeze([Object.freeze({ type: 'text' as const, text: body })]),
       source: Object.freeze({ kind: MESSAGE_SOURCE, ...source }),
     }) as UserMessage
-    try {
-      if (wake) {
-        // One message per thread, attributed to the thread's session with dsh's agent-to-agent source: the chat
-        // shows each as a task message. All of them open the same coordinator turn. A quiet notice in the same
-        // batch rides along in its thread's message.
-        for (const message of noticeMessages(batch)) {
-          const sender = this.records.get(message.threadId)?.info.sessionId
-          // A look-in (alone or with quiet progress of its executor) is a collapsed notice row with its one-line
-          // summary, not a message from the executor.
-          agent.followup(message.lookInOnly || sender === undefined || sender === ''
+    const { text, wake, summary } = formatNotices(batch)
+    if (!wake) return { messages: [{ message: make(text, { form: 'notice', summary }) }], wake }
+    return {
+      wake,
+      messages: noticeMessages(batch).map((message) => {
+        const sender = this.records.get(message.threadId)?.info.sessionId
+        return {
+          threadId: message.threadId,
+          message: message.lookInOnly || sender === undefined || sender === ''
             ? make(message.text, { form: 'notice', summary: message.summary })
-            : { ...make(message.text, {}), source: Object.freeze({ kind: 'agent-message', form: 'relay', senderSessionId: sender }) })
+            : { ...make(message.text, {}), source: Object.freeze({ kind: 'agent-message', form: 'relay', senderSessionId: sender }) },
         }
-      } else {
-        // Background context: a collapsed row that carries the one-line summary.
-        agent.inject(make(text, { form: 'notice', summary }))
+      }),
+    }
+  }
+
+  /**
+   * Bound a list of kept notices (`KEPT_NOTICES_MAX`): past the bound the oldest quiet notices go first, then the
+   * oldest. Nothing is dropped without a log line that says how many and why.
+   */
+  private capNotices(coord: CoordinatorRecord, notices: Notice[], why: string): Notice[] {
+    const over = notices.length - KEPT_NOTICES_MAX
+    if (over <= 0) return notices
+    const quiet = new Set(notices.filter(n => !n.wake).slice(0, over))
+    const kept = notices.filter(n => !quiet.has(n)).slice(-KEPT_NOTICES_MAX)
+    say(`dropped ${over} notices of coordinator ${coord.id} (${quiet.size} quiet ones first): ${why}`)
+    return kept
+  }
+
+  /**
+   * Whether the coordinator's waiting notices, with `input` behind them, have to stay where they are: some of them
+   * waited through a turn that did not end normally (`blocked`), and nothing that came after that turn wakes the chat.
+   */
+  private waitsForTurn(coord: CoordinatorRecord, input: readonly Notice[]): boolean {
+    const blocked = coord.blocked ?? 0
+    return blocked > 0 && ![...(coord.waiting ?? []).slice(blocked), ...input].some(n => n.wake)
+  }
+
+  /** Put the waiting list on the record, with the count of blocked notices at its front kept right. */
+  private setWaiting(coord: CoordinatorRecord, waiting: Notice[], blocked: ReadonlySet<Notice>): void {
+    if (waiting.length === 0) delete coord.waiting
+    else coord.waiting = waiting
+    const count = waiting.filter(n => blocked.has(n)).length
+    if (count === 0) delete coord.blocked
+    else coord.blocked = count
+  }
+
+  /** Put notices behind the blocked ones at the front of the waiting list, as blocked ones themselves (see `blocked`). */
+  private blockNotices(coord: CoordinatorRecord, notices: Notice[]): void {
+    const before = coord.waiting ?? []
+    const front = before.slice(0, coord.blocked ?? 0)
+    const all = this.capNotices(coord, [...front, ...notices, ...before.slice(front.length)], `more than ${KEPT_NOTICES_MAX} wait for its chat`)
+    this.setWaiting(coord, all, new Set([...front, ...notices]))
+  }
+
+  /** Keep notices on the record until the coordinator's chat can take them, and look again after a while. */
+  private keepWaiting(coord: CoordinatorRecord, notices: Notice[]): void {
+    const before = coord.waiting ?? []
+    const blocked = new Set(before.slice(0, coord.blocked ?? 0))
+    this.setWaiting(coord, this.capNotices(coord, [...before, ...notices], `more than ${KEPT_NOTICES_MAX} wait for its chat`), blocked)
+    // Nothing to look at again while all that waits is blocked: the end of the chat's next turn arms the timer.
+    if (coord.waiting === undefined || coord.waitingTimer !== undefined || this.disposed || this.waitsForTurn(coord, [])) return
+    coord.waitingTimer = this.timers.set(() => {
+      coord.waitingTimer = undefined
+      this.flushWaiting(coord)
+    }, WAITING_RECHECK_MS)
+    ;(coord.waitingTimer as { unref?: () => void } | undefined)?.unref?.()
+  }
+
+  /** Drop the waiting status notices that no longer hold (`staleNotice`). */
+  private dropStaleWaiting(coord: CoordinatorRecord): void {
+    const before = coord.waiting ?? []
+    const live = before.filter(n => !this.staleNotice(n))
+    if (live.length !== before.length) this.setWaiting(coord, live, new Set(before.slice(0, coord.blocked ?? 0)))
+  }
+
+  /** Take the waiting notices off the record. */
+  private takeWaiting(coord: CoordinatorRecord): Notice[] {
+    const waiting = coord.waiting ?? []
+    delete coord.waiting
+    delete coord.blocked
+    if (coord.waitingTimer !== undefined) this.timers.clear(coord.waitingTimer)
+    delete coord.waitingTimer
+    return waiting
+  }
+
+  /**
+   * The coordinator's chat is archived or gone: its waiting notices and `notices` join the held ones, in order, and
+   * are handed over as background when the chat is open again (`handHeld`).
+   */
+  private holdNotices(coord: CoordinatorRecord, notices: Notice[]): void {
+    const all = [...coord.held, ...this.takeWaiting(coord), ...notices]
+    if (all.length > 0) coord.held = this.capNotices(coord, all, `more than ${KEPT_NOTICES_MAX} are held while its chat is closed`)
+  }
+
+  /** The coordinator's chat may be idle now: deliver the notices that waited for the end of its turn. */
+  private flushWaiting(coord: CoordinatorRecord): void {
+    if (this.disposed || (coord.waiting?.length ?? 0) === 0) return
+    this.deliverTo(coord.id, []).catch((error: unknown) => { say(`could not deliver the waiting notices of coordinator ${coord.id}: ${errorText(error)}`) })
+  }
+
+  /**
+   * On unload: notices that still wait are added to the coordinator's chat without waking it, also to a turn that
+   * runs, so a reload or the end of the app need not lose them (they go to the next-step list, which dsh keeps in
+   * the Session log). This includes notices that waited behind a stopped or failed turn: the plugin's memory ends
+   * here, and a notice the coordinator reads late is better than one it never gets.
+   */
+  private handOverWaiting(): void {
+    for (const coord of this.coordinators.values()) {
+      const waiting = this.takeWaiting(coord)
+      if (waiting.length === 0) continue
+      const agent = coord.sessionId === null || !this.chatLive(coord) ? undefined : this.ctx.agents.get(coord.sessionId)
+      if (agent === undefined) {
+        say(`dropped ${waiting.length} waiting notices of coordinator ${coord.id} on unload: its chat is not loaded`)
+        continue
       }
-      this.settleLookIns(input, true)
-    } catch (error) {
-      this.settleLookIns(input, false)
-      say(`could not deliver notices to coordinator ${coord.id}: ${errorText(error)}`)
+      try {
+        for (const { message } of this.noticesFor(waiting).messages) agent.inject(message)
+        say(`handed ${waiting.length} waiting notices to the chat of coordinator ${coord.id} on unload`)
+      } catch (error) {
+        say(`could not hand over the waiting notices of coordinator ${coord.id}: ${errorText(error)}`)
+      }
     }
   }
 
