@@ -18,8 +18,9 @@
  * `readme` (neutral demo content for the README screenshots: a weather CLI and a docs site, no notices).
  */
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { CoordinatorInfo, ModelChoice, ModelChoices, SetCoordinatorMemoryResult } from '../types.ts'
-import type { EnsureCoordinatorResult, FolderDecision, ThreadInfo, ThreadPermission, ThreadPermissionState, ThreadStatus } from './contract.ts'
+import type {
+  CoordinatorInfo, EnsureCoordinatorResult, FolderDecision, ModelChoice, ModelChoices, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermission, ThreadPermissionState, ThreadStatus,
+} from '../types.ts'
 import type { ArchiveResult, ClientState, CoordinatorRemote } from './remote.ts'
 
 export interface CoordinatorSource {

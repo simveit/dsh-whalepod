@@ -17,8 +17,9 @@ import { IconCheck, IconModel } from './icons.tsx'
 import type { Translate } from './locales.ts'
 import { chatRunsOn, effortOptions, listedModel, modelName, optionValue, withEffort, withModel } from './model-view.ts'
 import { dshCopy } from './permission.tsx'
+import { errorText } from './store.ts'
+import { useSavedFlag } from './ui.tsx'
 
-const SAVED_MS = 2_500
 /** The option value of "Not set" and "Same as coordinator". */
 const NONE = ''
 
@@ -78,14 +79,9 @@ function ModelRow({ kind, coordinator, choices, state, list, t, dsh, onSet, onRe
   const [local, setLocal] = useState<{ value: ModelChoice | undefined } | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
-  const [justSaved, setJustSaved] = useState(false)
+  const [justSaved, setJustSaved] = useSavedFlag()
   const ids = { field: useId(), help: useId() }
   useEffect(() => { setLocal(undefined) }, [savedKey])
-  useEffect(() => {
-    if (!justSaved) return
-    const timer = setTimeout(() => { setJustSaved(false) }, SAVED_MS)
-    return () => { clearTimeout(timer) }
-  }, [justSaved])
 
   const archived = coordinator.archived === true
   const stored = local === undefined ? saved : local.value
@@ -98,7 +94,7 @@ function ModelRow({ kind, coordinator, choices, state, list, t, dsh, onSet, onRe
       setJustSaved(true)
     } catch (e) {
       setLocal(undefined)
-      setError(t('error.model', { reason: e instanceof Error ? e.message : String(e) }))
+      setError(t('error.model', { reason: errorText(e) }))
     } finally {
       setBusy(false)
     }
@@ -141,7 +137,7 @@ function ModelRow({ kind, coordinator, choices, state, list, t, dsh, onSet, onRe
   // The list as a whole is said once, on the first row.
   const listFailed = kind === 'coordinator' && (list === 'failed' || (empty && choices.partial))
 
-  return <div className="dco-setting dco-setting-block" data-testid={`dco-model-${kind}`}>
+  return <div className="dco-setting" data-testid={`dco-model-${kind}`}>
     <span className="dco-setting-icon" aria-hidden="true"><IconModel size={16} /></span>
     <div className="dco-setting-main">
       <label className="dco-setting-title" htmlFor={ids.field}>{t(`models.${kind}.label`)}</label>

@@ -9,8 +9,7 @@
  * tab is hidden, and publishes a new snapshot only when `revision` or `epoch` changes or the error state flips, so
  * React re-renders nothing on an unchanged poll.
  */
-import type { CoordinatorInfo } from '../types.ts'
-import type { CoordinatorState, ThreadInfo, ThreadStatus } from './contract.ts'
+import type { CoordinatorInfo, CoordinatorState, ThreadInfo, ThreadStatus } from '../types.ts'
 import type { ClientState } from './remote.ts'
 import { SourceError, type CoordinatorSource } from './source.ts'
 
@@ -122,7 +121,7 @@ export class CoordinatorStore {
       }
     } catch (error) {
       if (controller.signal.aborted) return
-      const message = error instanceof Error ? error.message : String(error)
+      const message = errorText(error)
       const unreachable = !(error instanceof SourceError) || error.unreachable
       const previous = this.snapshot
       if (previous.error !== message || previous.loading) {
@@ -373,6 +372,11 @@ export function memoryRowView(row: Pick<MemoryRow, 'draft' | 'base' | 'changed'>
 /** Characters of an executor prompt as the host's limit counts them (UTF-16 units of the text, as `String.length`). */
 export function promptLength(text: string): number {
   return text.length
+}
+
+/** The message of something that was thrown. */
+export function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /** A host reason as a short sentence for a notice: no "Error:" prefix, first letter upper case, a final full stop. */

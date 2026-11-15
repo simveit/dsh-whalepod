@@ -122,8 +122,6 @@ export class NoticeBatcher {
     this.timers = options.timers ?? realTimers
   }
 
-  get size(): number { return this.pending.length }
-
   add(notice: Notice): void {
     const now = this.timers.now()
     if (this.pending.length === 0) this.firstAt = now

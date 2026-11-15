@@ -8,9 +8,10 @@
  * every language; the plugin's dictionary covers the rest.
  */
 import { useId, useState } from 'react'
-import type { ThreadPermission, ThreadPermissionState } from './contract.ts'
+import type { ThreadPermission, ThreadPermissionState } from '../types.ts'
 import { IconShield } from './icons.tsx'
 import type { Translate } from './locales.ts'
+import { errorText } from './store.ts'
 import { Button } from './ui.tsx'
 
 /** dsh's dictionary for the composer's permission picker, when loaded; falls back to the plugin's own keys. */
@@ -61,7 +62,7 @@ export function PermissionControl({ state, t, dsh, onSet }: {
       await onSet(mode)
       setConfirming(false); setAcknowledged(false)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(false)
     }

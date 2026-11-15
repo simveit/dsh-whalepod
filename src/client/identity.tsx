@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { CoordinatorInfo } from '../types.ts'
 import { IconPencil } from './icons.tsx'
 import type { Translate } from './locales.ts'
-import { monogramOf, NAME_MAX, nameOf, nameProblem, toneOf } from './store.ts'
+import { errorText, monogramOf, NAME_MAX, nameOf, nameProblem, toneOf } from './store.ts'
 import { Tooltip } from './ui.tsx'
 
 /** The monogram tile; decorative (the name is always shown or labelled next to it). */
@@ -45,7 +45,7 @@ export function CoordinatorName({ coordinator, coordinators, t, onRename, headin
       await onRename(next)
       close()
     } catch (e) {
-      setError(t('rename.failed', { reason: e instanceof Error ? e.message : String(e) }))
+      setError(t('rename.failed', { reason: errorText(e) }))
     } finally {
       setBusy(false)
     }

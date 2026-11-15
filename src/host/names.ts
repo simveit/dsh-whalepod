@@ -83,8 +83,6 @@ export const ROLE = {
   teammates: 'Teammates',
 } as const
 
-export type RoleKey = keyof typeof ROLE
-
 const STATIC = /\{\{(tool|role)\.([A-Za-z]+)\}\}/g
 /** One per-request placeholder: `{{name}}`. */
 const VALUE = /\{\{([A-Za-z]+)\}\}/g

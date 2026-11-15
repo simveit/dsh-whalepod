@@ -26,6 +26,7 @@ Words. A coordinator is the main session that delegates. Each delegated session 
 | `src/host/authority.ts` | Reads which messages in a session log the user typed, and whether the user opened the current turn. Recognises the old and new tool names. |
 | `src/host/fence.ts` | The one helper that cleans executor text and wraps it in `<thread-data>` blocks. |
 | `src/host/views.ts` | What `executor_list`, `executor_read` and `executor_peers` return, and how a tool result is rendered. |
+| `src/host/memory-text.ts` | The wording of the memory for models: the snapshot in the coordinator's context (`coordinatorMemoryContext`, `memoryTag`), the page as the memory tools return it (`memoryPageView`, `memoryConflictView`) and the lines that name its writers. |
 | `src/host/status.ts` | Pure status logic: `ThreadFacts` (with the Lead's Teammates), `applyEvent`, `applyMemberEvent`, `deriveStatus`, `restoredFacts`, `foldTurn`. |
 | `src/host/notices.ts` | `NoticeBatcher` (debounce, maximum delay, holding reports) and the notice wording. Each notice carries its coordinator id. |
 | `src/host/tools.ts` | The tool definitions: `coordinatorTools`, `threadTools` and `memoryTools` (for both roles). Every op takes the calling Session id first. |

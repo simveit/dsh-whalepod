@@ -10,13 +10,11 @@
 import { z } from 'zod'
 import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-info'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-// contract.ts re-exports the older wire types; the round-2 additions are imported from their owner directly.
 import type {
-  ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CreateCoordinatorRequest, EnsureCoordinatorRequest, PingResult,
+  ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult, PingResult,
   DeleteCoordinatorRequest, DeleteCoordinatorResult, ListModelChoicesRequest, ModelChoices, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult,
-  SetExecutorPromptRequest, SetModelRequest,
+  SetExecutorPromptRequest, SetModelRequest, ThreadInfo, ThreadPermissionState,
 } from '../types.ts'
-import type { CoordinatorState, EnsureCoordinatorResult, ThreadInfo, ThreadPermissionState } from './contract.ts'
 
 /** The package name, as the dsh generator writes it into a Remote spec (the plugin id stays `dsh-coordinator`). */
 const PACKAGE = 'dsh-whalepod'

@@ -7,8 +7,7 @@
  * folders. Layout, row pattern and empty state follow dsh's Automation tasks and Plugins pages; see styles.ts.
  */
 import { memo, useEffect, useId, useState, type ReactNode } from 'react'
-import type { CoordinatorInfo, ModelChoice, ModelChoices, SetCoordinatorMemoryResult } from '../types.ts'
-import type { FolderDecision, HostProblem, ModelHealth, ThreadInfo } from './contract.ts'
+import type { CoordinatorInfo, FolderDecision, HostProblem, ModelChoice, ModelChoices, ModelHealth, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermission } from '../types.ts'
 import { CoordinatorArt } from './art.tsx'
 import { ExecutorPrompt } from './executor-prompt.tsx'
 import { CoordinatorMemory } from './memory.tsx'
@@ -20,13 +19,12 @@ import { IconArchive, IconChat, IconChevron, IconTrash, IconWarning } from './ic
 import { plural, type Translate } from './locales.ts'
 import type { ArchiveResult } from './remote.ts'
 import {
-  archivedThreadsOf, chatOf, countsOf, FINISHED, GROUPS, sentence, groupOf, isLoading, isWorking, nameOf, needsUser, newDraftAt, orphanThreads, pickCoordinator, sortThreads, threadsOf,
+  archivedThreadsOf, chatOf, countsOf, errorText, FINISHED, GROUPS, sentence, groupOf, isLoading, isWorking, nameOf, needsUser, newDraftAt, orphanThreads, pickCoordinator, sortThreads, threadsOf,
   type NewCoordinatorDraft, type Snapshot, type ThreadGroup,
 } from './store.ts'
 import { openThreadSession, threadDetail, threadTooltip, ThreadActions, ThreadGlyph, ThreadStatusText, ThreadTime, shortenCwd, useNow, type RowActionHandlers } from './thread-row.tsx'
 import { Button, Tooltip } from './ui.tsx'
 import { dshCopy, PermissionControl, PermissionNote } from './permission.tsx'
-import type { ThreadPermission } from './contract.ts'
 
 export type { PickResult } from './folder.tsx'
 export { FolderLine } from './folder.tsx'
@@ -94,10 +92,6 @@ export interface PanelProps extends PanelActions {
 
 /** A page notice: a short line, optionally under a bold title; `warning` for refusals the user can act on. */
 interface Notice { text: string; title?: string; tone: 'danger' | 'warning' }
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 
 const ThreadRow = memo(function ThreadRow({ thread, now, t, onOpen, onArchive, copy, handlers, onError, orphan = false }: {

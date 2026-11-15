@@ -13,16 +13,14 @@ export interface PersistedThread {
         key: string;
         text: string;
     }[];
-    /** Legacy: the thread's own Workspace from releases before threads moved to Ungrouped (removed once, design 4.4). */
+    /** The Workspace the thread's Session sits in: its sidebar group. */
     workspaceId?: string;
-    /** Legacy: the plugin created the thread's Workspace. */
+    /** The plugin created that Workspace. */
     ownWorkspace?: boolean;
     /** The plugin created the thread's folder (below its coordinator's folder such a folder needs no confirmation). */
     ownFolder?: boolean;
     /** The coordinator's Executor prompt when this Executor Session started (it keeps that one for life). */
     executorPrompt?: string;
-    /** The thread was moved off `auto` while the plugin was removed; restore `auto` on the next load. */
-    presetParked?: boolean;
     /** Archived threads stay in the file but leave the list and are no longer tracked. */
     archived?: boolean;
 }

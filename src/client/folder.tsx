@@ -11,7 +11,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { CoordinatorInfo } from '../types.ts'
 import { IconFolder, IconTextField } from './icons.tsx'
 import type { Translate } from './locales.ts'
-import { nameOf } from './store.ts'
+import { errorText, nameOf } from './store.ts'
 import { shortenCwd } from './thread-row.tsx'
 import { Button, StateDot, Tooltip } from './ui.tsx'
 
@@ -52,7 +52,7 @@ export function usePendingPick(pickFolder: () => Promise<PickResult>): {
     }
     finish.current = end
     setPending(true); setSlow(false)
-    pickFolder().then(end, (error: unknown) => { end({ kind: 'unavailable', reason: error instanceof Error ? error.message : String(error) }) })
+    pickFolder().then(end, (error: unknown) => { end({ kind: 'unavailable', reason: errorText(error) }) })
   }), [pickFolder])
   const cancel = useCallback(() => { finish.current?.({ kind: 'abandoned' }) }, [])
   return { pending, slow, start, cancel }
@@ -131,7 +131,7 @@ export function FolderLine({ coordinator, t, pickFolder, setFolder, compact = fa
       await setFolder(coordinator.id, path)
       setEditing(false)
     } catch (e) {
-      setError(t('error.folder', { reason: e instanceof Error ? e.message : String(e) }))
+      setError(t('error.folder', { reason: errorText(e) }))
     } finally {
       setBusy(false)
     }

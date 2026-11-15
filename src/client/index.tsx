@@ -19,7 +19,7 @@ import { TYPERT_REMOTE, type CoordinatorRemote } from './remote.ts'
 import { CoordinatorRowHover, CoordinatorRowTrailing } from './row-decor.tsx'
 import { mountThreadsPane } from './side-pane.tsx'
 import { fakeSource, remoteSource, wantsFakeSource } from './source.ts'
-import { CoordinatorStore } from './store.ts'
+import { CoordinatorStore, errorText } from './store.ts'
 import { CSS, STYLE_ID } from './styles.ts'
 
 /** Same id for the sidebar entry and the main panel key: the sidebar opens the panel whose key matches. */
@@ -111,7 +111,7 @@ async function pickFolder(ctx: Context): Promise<PickResult> {
     const path = await pick()
     return typeof path === 'string' && path !== '' ? { kind: 'picked', path } : { kind: 'cancelled' }
   } catch (error) {
-    return { kind: 'unavailable', reason: error instanceof Error ? error.message : String(error) }
+    return { kind: 'unavailable', reason: errorText(error) }
   }
 }
 
@@ -149,30 +149,20 @@ export async function apply(ctx: ClientContext): Promise<void> {
     uiCtx.effect(() => () => { store.dispose() }, 'dsh-coordinator: state poller')
     const hooks = { coordinator: store }
     const goHome = () => { optional<LayoutService>(uiCtx, 'layout')?.selectPanel(PANEL_ID) }
-    // dsh's own permission picker copy (labels, badge, acknowledgement), when its dictionary is registered.
-    const dshPermission = (): Translate | undefined => {
+    // dsh's own copy, when the dictionary is registered.
+    const dshWords = (namespace: string): Translate | undefined => {
       try {
-        return ctx.locale.bind('permission.access')
+        return ctx.locale.bind(namespace)
       } catch {
         return undefined
       }
     }
-    // dsh's approval card copy (Reject / Allow once / Always allow), for the folder confirmation buttons.
-    const dshApproval = (): Translate | undefined => {
-      try {
-        return ctx.locale.bind('approval')
-      } catch {
-        return undefined
-      }
-    }
-    // dsh's model picker copy (Effort, Default, the account provider's name), for the model rows.
-    const dshModel = (): Translate | undefined => {
-      try {
-        return ctx.locale.bind('model')
-      } catch {
-        return undefined
-      }
-    }
+    // The permission picker (labels, badge, acknowledgement).
+    const dshPermission = () => dshWords('permission.access')
+    // The approval card (Reject / Allow once / Always allow), for the folder confirmation buttons.
+    const dshApproval = () => dshWords('approval')
+    // The model picker (Effort, Default, the account provider's name), for the model rows.
+    const dshModel = () => dshWords('model')
     // When dsh's models may have changed: the events dsh's own model picker reloads its list on, where the client
     // gets them, and the window coming back to the front (a provider set up in another window).
     const modelListeners = new Set<() => void>()

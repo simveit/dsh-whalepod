@@ -3,9 +3,9 @@
  * the status glyph, the status word with its tone, the one-line detail, the relative time and the folder.
  */
 import { useEffect, useState } from 'react'
-import type { FolderDecision, ThreadInfo, ThreadStatus } from './contract.ts'
+import type { FolderDecision, ThreadInfo, ThreadStatus } from '../types.ts'
 import type { Translate } from './locales.ts'
-import { FINISHED, needsUser } from './store.ts'
+import { errorText, FINISHED, needsUser } from './store.ts'
 import { Button, StateDot, type DotState } from './ui.tsx'
 
 export const DOT: Record<ThreadStatus, DotState> = {
@@ -124,7 +124,7 @@ export function ThreadActions({ thread, t, copy, handlers, onError, compact = fa
   if (action === undefined) return null
   const run = (job: () => Promise<void>) => {
     setBusy(true)
-    job().catch((error: unknown) => { onError(thread, error instanceof Error ? error.message : String(error)) }).finally(() => { setBusy(false) })
+    job().catch((error: unknown) => { onError(thread, errorText(error)) }).finally(() => { setBusy(false) })
   }
   const size = 'sm'
   if (action.kind === 'confirm-folder') {

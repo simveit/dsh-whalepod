@@ -1,10 +1,24 @@
 /**
  * Small controls copied from dsh's ui-primitives (Button, StateDot, Tooltip; dsh 0.2.2, MIT) under the plugin's
- * `dco-` prefix, so the plugin depends on theme tokens only and not on a Harness client package.
+ * `dco-` prefix, so the plugin depends on theme tokens only and not on a Harness client package. And one hook of the
+ * plugin's own for the short "Saved" next to a field (`useSavedFlag`).
  */
 import { cloneElement, forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type FocusEvent,
   type PointerEvent, type ReactElement, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+
+const SAVED_MS = 2_500
+
+/** A flag that falls back to false a moment after it was set: the "Saved" a row shows after a save. */
+export function useSavedFlag(): [boolean, (saved: boolean) => void] {
+  const [saved, setSaved] = useState(false)
+  useEffect(() => {
+    if (!saved) return
+    const timer = setTimeout(() => { setSaved(false) }, SAVED_MS)
+    return () => { clearTimeout(timer) }
+  }, [saved])
+  return [saved, setSaved]
+}
 
 export type DotState = 'done' | 'warning' | 'ongoing' | 'error' | 'idle'
 

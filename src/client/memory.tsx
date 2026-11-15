@@ -26,11 +26,9 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { CoordinatorInfo, SetCoordinatorMemoryResult } from '../types.ts'
 import { IconCheck, IconMemory } from './icons.tsx'
 import type { Translate } from './locales.ts'
-import { MEMORY_MAX, memoryRowMerge, memoryRowSync, memoryRowView, promptLength, type MemoryRow } from './store.ts'
+import { errorText, MEMORY_MAX, memoryRowMerge, memoryRowSync, memoryRowView, promptLength, type MemoryRow } from './store.ts'
 import { relativeTime, useNow } from './thread-row.tsx'
-import { Button } from './ui.tsx'
-
-const SAVED_MS = 2_500
+import { Button, useSavedFlag } from './ui.tsx'
 
 export function CoordinatorMemory({ coordinator, epoch, t, onSave, onToggle }: {
   coordinator: CoordinatorInfo; t: Translate
@@ -49,7 +47,7 @@ export function CoordinatorMemory({ coordinator, epoch, t, onSave, onToggle }: {
   const [reviewing, setReviewing] = useState(false)
   const [switching, setSwitching] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
-  const [justSaved, setJustSaved] = useState(false)
+  const [justSaved, setJustSaved] = useSavedFlag()
   const field = useRef<HTMLTextAreaElement>(null)
   const ids = { label: useId(), help: useId(), count: useId() }
   const archived = coordinator.archived === true
@@ -71,11 +69,6 @@ export function CoordinatorMemory({ coordinator, epoch, t, onSave, onToggle }: {
   useEffect(() => {
     setRow(current => memoryRowSync(current, { text: hostText, revision: hostRevision, ...(epoch === undefined ? {} : { epoch }) }) ?? current)
   }, [hostText, hostRevision, epoch, row])
-  useEffect(() => {
-    if (!justSaved) return
-    const timer = setTimeout(() => { setJustSaved(false) }, SAVED_MS)
-    return () => { clearTimeout(timer) }
-  }, [justSaved])
 
   const { draft } = row
   const length = promptLength(draft)
@@ -101,7 +94,7 @@ export function CoordinatorMemory({ coordinator, epoch, t, onSave, onToggle }: {
         setRefused(true)
       }
     } catch (e) {
-      setError(t('memory.failed', { reason: e instanceof Error ? e.message : String(e) }))
+      setError(t('memory.failed', { reason: errorText(e) }))
     } finally {
       setBusy(false)
     }
@@ -119,7 +112,7 @@ export function CoordinatorMemory({ coordinator, epoch, t, onSave, onToggle }: {
       const host = { text: result.coordinator.memory ?? '', revision: result.coordinator.memoryRevision ?? 0 }
       setRow(current => ({ ...memoryRowMerge(current, host), ...(current.epoch === undefined ? {} : { epoch: current.epoch }) }))
     } catch (e) {
-      setError(t('memory.reviewFailed', { reason: e instanceof Error ? e.message : String(e) }))
+      setError(t('memory.reviewFailed', { reason: errorText(e) }))
     } finally {
       setReviewing(false)
     }
@@ -131,13 +124,13 @@ export function CoordinatorMemory({ coordinator, epoch, t, onSave, onToggle }: {
     try {
       await onToggle(coordinator.id, enabled)
     } catch (e) {
-      setError(t('memory.toggleFailed', { reason: e instanceof Error ? e.message : String(e) }))
+      setError(t('memory.toggleFailed', { reason: errorText(e) }))
     } finally {
       setSwitching(false)
     }
   }
 
-  return <div className="dco-setting dco-setting-block" data-testid="dco-memory">
+  return <div className="dco-setting" data-testid="dco-memory">
     <span className="dco-setting-icon" aria-hidden="true"><IconMemory size={16} /></span>
     <div className="dco-setting-main">
       <label className="dco-setting-title" id={ids.label} htmlFor={`${ids.label}-field`}>{t('memory.title')}</label>

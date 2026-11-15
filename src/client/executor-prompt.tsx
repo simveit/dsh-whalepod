@@ -8,10 +8,8 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { CoordinatorInfo } from '../types.ts'
 import { IconCheck, IconInstructions } from './icons.tsx'
 import type { Translate } from './locales.ts'
-import { PROMPT_MAX, promptLength } from './store.ts'
-import { Button } from './ui.tsx'
-
-const SAVED_MS = 2_500
+import { errorText, PROMPT_MAX, promptLength } from './store.ts'
+import { Button, useSavedFlag } from './ui.tsx'
 
 export function ExecutorPrompt({ coordinator, t, onSave }: {
   coordinator: CoordinatorInfo; t: Translate; onSave: (coordinatorId: string, text: string) => Promise<void>
@@ -21,7 +19,7 @@ export function ExecutorPrompt({ coordinator, t, onSave }: {
   const [base, setBase] = useState(saved)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
-  const [justSaved, setJustSaved] = useState(false)
+  const [justSaved, setJustSaved] = useSavedFlag()
   // The field grows with its text through CSS (`field-sizing: content`, between 3 and about 12 lines).
   const field = useRef<HTMLTextAreaElement>(null)
   const ids = { label: useId(), help: useId(), count: useId() }
@@ -33,11 +31,6 @@ export function ExecutorPrompt({ coordinator, t, onSave }: {
     if (draft === base) setDraft(saved)
     setBase(saved)
   }, [saved, base, draft])
-  useEffect(() => {
-    if (!justSaved) return
-    const timer = setTimeout(() => { setJustSaved(false) }, SAVED_MS)
-    return () => { clearTimeout(timer) }
-  }, [justSaved])
 
   const length = promptLength(draft)
   const over = length > PROMPT_MAX
@@ -50,14 +43,14 @@ export function ExecutorPrompt({ coordinator, t, onSave }: {
       setBase(draft)
       setJustSaved(true)
     } catch (e) {
-      setError(t('prompt.failed', { reason: e instanceof Error ? e.message : String(e) }))
+      setError(t('prompt.failed', { reason: errorText(e) }))
     } finally {
       setBusy(false)
     }
   }
   const revert = () => { setDraft(base); setError(undefined); field.current?.focus() }
 
-  return <div className="dco-setting dco-setting-block" data-testid="dco-executor-prompt">
+  return <div className="dco-setting" data-testid="dco-executor-prompt">
     <span className="dco-setting-icon" aria-hidden="true"><IconInstructions size={16} /></span>
     <div className="dco-setting-main">
       <label className="dco-setting-title" id={ids.label} htmlFor={`${ids.label}-field`}>{t('prompt.title')}</label>

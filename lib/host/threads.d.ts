@@ -1,9 +1,8 @@
-import type { ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelChoices, ModelHealth, ReportKind, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermissionState } from '../types.ts';
+import type { ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelChoices, ReportKind, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermissionState } from '../types.ts';
 import { type GuardFs } from './cwd-guard.ts';
 import type { HostContext, SessionId } from './dsh.ts';
 import { type CoordinatorConfig } from './ids.ts';
 import { type Timers } from './notices.ts';
-import { type MemoryWriter } from './store.ts';
 import { type ThreadOps } from './tools.ts';
 import { type ToolView } from './views.ts';
 /**
@@ -67,68 +66,7 @@ export interface ThreadServiceDeps {
  * does not contain it). Teammates get it only through the Lead.
  */
 export declare function executorPromptSection(text: string): string;
-/** The tag around a memory text: `coordinator-memory-` and 8 hex digits of a keyed hash of the text. */
-export declare function memoryTag(text: string): string;
-/** Who reads or writes a memory page through the tools: its coordinator, or the Lead of one of its Executor Sessions. */
-export type MemoryRole = 'coordinator' | 'executor';
-/**
- * The last writer of a memory in the plugin's own words, for the reader's role: "the user, on the Coordinator page",
- * the coordinator ("you" to itself), or an Executor Session by its id (never by its title, which is executor text).
- * @param self - the reading Lead's own Executor Session id.
- */
-export declare function memoryWriterText(writer: MemoryWriter, role: MemoryRole, self?: string): string;
-/**
- * The Executor Sessions that changed a memory since the owner last saved it on the Coordinator page, in the plugin's
- * own words and by id only. A later write by the coordinator names a new last writer but leaves this line, so
- * executor text in the page stays marked until the owner's save.
- * @returns the sentence, or an empty string when there is none.
- */
-export declare function memoryExecutorsText(executors: readonly string[]): string;
-/**
- * The coordinator's memory as runtime context (`dsh-coordinator:memory`), always present for a stored coordinator: the
- * page of notes, between tags whose suffix is a keyed hash of the text (`memoryTag`), or a line that it is empty. dsh
- * sends it inside a user-role `<system-reminder>` snapshot after the retained history, so the paragraph says that the
- * notes are not the user's message: they never authorise anything the host asks the user for. Since the Leads of the
- * coordinator's Executor Sessions write the page too, it also says that parts may come from one, and it names the
- * revision, which `memory_update` must be given back, who changed the page last, and which Executor Sessions changed
- * it since the owner last saved it (`memoryExecutorsText`).
- */
-export declare function coordinatorMemoryContext(text: string, revision?: number, writer?: MemoryWriter, executors?: readonly string[]): string;
-/**
- * What a coordinator whose memory the owner switched off gets in place of its memory: no text of the memory, only the
- * fact, so that an earlier copy in the conversation stops counting and the model does not call the tools in vain.
- */
-export declare const MEMORY_OFF_CONTEXT: string;
-/** The one line the memory tools answer with while the owner has the memory switched off: for a read, and for a write. */
-export declare function memoryOffLine(role: MemoryRole, write: boolean): string;
-/** A memory page as the tools show it: the text, its revision, its last writer and the executors that changed it since the owner's last save. */
-export interface MemoryPage {
-    text: string;
-    revision: number;
-    writer?: MemoryWriter;
-    executors?: readonly string[];
-    /** The reading Lead's own Executor Session id. */
-    self?: string;
-}
-/**
- * A memory page as the memory tools return it (`memory_read`, and with an `error` a refused `memory_update`): the
- * revision, the size, who changed it last, which Executor Sessions changed it since the owner last saved it
- * (`executorChanges`), and the text between tags under a paragraph that says what it is and what it can never do. A coordinator gets the keyed tag of its own snapshot (`memoryTag`); a Lead gets a random suffix per
- * call, so an executor, which can also write the page, never learns the tag that surrounds a text in its coordinator's
- * context.
- */
-export declare function memoryPageView(page: MemoryPage, role: MemoryRole): ToolView;
-/**
- * What `memory_update` returns when the text it was given is based on another revision than the current one, or on
- * none: nothing was saved, and the current page comes back (`memoryPageView`) so the writer merges and sends again.
- * @param given - the revision the call named, or undefined when it named none.
- */
-export declare function memoryConflictView(page: MemoryPage, role: MemoryRole, given: number | undefined): ToolView;
-/**
- * Order of the memory among the runtime contexts. `getContextOrder` only knows dsh's own names (100 to 210 in
- * dsh 0.2.2), so a plugin passes a number: after dsh's facts about the session, clear of its band.
- */
-export declare const MEMORY_CONTEXT_ORDER = 300;
+export { coordinatorMemoryContext, MEMORY_CONTEXT_ORDER, MEMORY_OFF_CONTEXT, memoryExecutorsText, memoryOffLine, memoryTag, memoryWriterText } from './memory-text.ts';
 export declare class ThreadService implements ThreadOps {
     private readonly records;
     private readonly bySession;
@@ -213,7 +151,6 @@ export declare class ThreadService implements ThreadOps {
     /** Changed memory writes per writer (coordinator id or executor id), and `progress` Reports that made a notice per executor. */
     private readonly memoryWrites;
     private readonly progressNotices;
-    /** Pairs the coordinator was already told about, until their window frees up. */
     /** Threads being archived by the plugin itself (their archive event is not the sidebar's). */
     private readonly archiving;
     /** Thread-owned turns per thread within a day (M5). */
@@ -249,6 +186,8 @@ export declare class ThreadService implements ThreadOps {
      * live rows are trusted only after validateRestore checked them against their Sessions (H1).
      */
     private restore;
+    /** The configured threads root as a real path: the home of the coordinator migrated from a version 1 file. */
+    private legacyRoot;
     /** Register one stored row. A brief re-queued across a restart is always delivered as a notice (H1). */
     private addRecord;
     /**
@@ -370,11 +309,15 @@ export declare class ThreadService implements ThreadOps {
      * is usable. A change bumps the revision so the page shows or clears that coordinator's "no model" notice.
      */
     private refreshHealth;
+    /** Whether a coordinator's model (its own, else the default a new coordinator would follow) can run. */
+    private checkHealth;
+    private llm;
+    private presets;
     /**
-     * Whether a coordinator's model (its own, else the default a new coordinator would follow) can run.
-     * @param coordinatorId - the coordinator; without one, the one "Open coordinator chat" opens.
+     * Put a coordinator chat on `workspace-write`. It has no write or shell tools (restrictCoordinator); the stricter
+     * sandbox is defence in depth, so a failure is ignored.
      */
-    checkHealth(coordinatorId?: string): Promise<ModelHealth>;
+    private sandboxChat;
     /** The permission mode new threads start in: the user's choice, else the config; `ask` while auto review is missing. */
     threadPermission(): ThreadPermissionState;
     /**
@@ -419,10 +362,18 @@ export declare class ThreadService implements ThreadOps {
     private logKind;
     /** Coordinators that are not archived. */
     private liveCoordinators;
+    /** A free name from the built-in list for a new or reopened coordinator. */
+    private newName;
+    /** Whether a live coordinator other than `except` already has this name (`nameKey`). */
+    private nameTaken;
+    /** An id no coordinator and no candidate has. */
+    private newCoordinatorId;
     /** The coordinator "Open coordinator chat" opens: the last used live one, else the newest live one. */
     private lastCoordinator;
     /** Whether a coordinator's chat can take notices now: it has a Session that is not archived, and it is not archived. */
     private chatLive;
+    /** The coordinator a Remote request names; anything that names none is refused. */
+    private requested;
     private addCoordinator;
     /**
      * The coordinator a tool call comes from. Only a stored coordinator: a candidate is promoted by the user's first
@@ -447,7 +398,6 @@ export declare class ThreadService implements ThreadOps {
      */
     private otherHomes;
     isThreadLead(sessionId: string): boolean;
-    threadOfSession(sessionId: string): ThreadInfo | undefined;
     /** Threads holding a slot: the lead or a team member runs, and nobody in the tree waits on the user. */
     private activeThreadIds;
     private setTitle;
@@ -611,7 +561,7 @@ export declare class ThreadService implements ThreadOps {
     private restrictCoordinator;
     /**
      * Thread agents run on the user's Standard tools, except the plugin manager and market tools, which would let a
-     * thread install code into the user's dsh (the release before this one left them out of its thread preset too).
+     * thread install code into the user's dsh.
      */
     private restrictThreadAgent;
     /**
@@ -722,6 +672,8 @@ export declare class ThreadService implements ThreadOps {
      * @param previous - the name before a rename, if any.
      */
     private applyName;
+    /** The owner changed a setting of a coordinator: stamp the record, tell the page, save at once and log `what`. */
+    private settingSaved;
     /**
      * Why a model choice cannot be used now, or undefined when dsh offers it: its provider is one of dsh's providers,
      * its model is in that provider's list, its reasoning effort (when it names one) is one dsh lists for the model, and
@@ -737,7 +689,7 @@ export declare class ThreadService implements ThreadOps {
      *
      * `unchecked`: dsh could not be asked about the executors' model (its provider's list failed). Nothing stands in for
      * it then, because a Session keeps the model it starts on: `executor_start` starts nothing and says so. A model of
-     * the chat that cannot be checked is left out, as it was before the setting existed.
+     * the chat that cannot be checked is only left out.
      */
     private executorModels;
     /**
@@ -902,6 +854,8 @@ export declare class ThreadService implements ThreadOps {
     private working;
     /** A coordinator's chat log, read once per tool call that depends on what the user typed in that chat. */
     private coordinatorLog;
+    /** Real paths of the folders of live threads that belong to other coordinators (or to none). */
+    private foldersOfOthers;
     /** Real paths of live threads' folders (another thread's folder needs the user's confirmation, L7). */
     private takenFolders;
     /** Real paths of folders the plugin created for live threads (below a coordinator's folder they need no confirmation). */
@@ -1138,7 +1092,7 @@ export declare class ThreadService implements ThreadOps {
      * while the chat runs a turn, and later notices of that coordinator wait behind it, in order. When the chat is
      * idle, the waiting notices and the new ones go out together into the Agent's next-step list, which dsh does not
      * show: all messages but the last with `inject`, the last with `steer`, which starts one turn whose first step
-     * admits all of them in order. Quiet notices alone are added with `inject`, as before, also to a running turn.
+     * admits all of them in order. Quiet notices alone are added with `inject`, also to a running turn.
      *
      * An idle chat with input of the user that dsh keeps pending counts as running (`chatTaken`): the plugin never
      * starts or joins it. Notices that waited through a turn the user stopped, or one that failed or was blocked,

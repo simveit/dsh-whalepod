@@ -53,7 +53,6 @@ export declare const ROLE: {
     readonly teammate: "Teammate";
     readonly teammates: "Teammates";
 };
-export type RoleKey = keyof typeof ROLE;
 /**
  * Fill `{{tool.<key>}}` and `{{role.<key>}}` in a prompt template.
  * @throws when a `{{tool.x}}` or `{{role.x}}` names an unknown key.

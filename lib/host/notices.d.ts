@@ -112,7 +112,6 @@ export declare class NoticeBatcher {
     private readonly timers;
     private readonly options;
     constructor(options: BatcherOptions);
-    get size(): number;
     add(notice: Notice): void;
     /** Re-check held notices soon, for example when a thread's turn ended without a status notice. */
     kick(): void;

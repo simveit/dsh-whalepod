@@ -28,7 +28,6 @@ export declare class Slots {
     used(): number;
     /** Thread ids waiting for a slot, oldest first. */
     waiting(): string[];
-    isQueued(threadId: string): boolean;
     /** Run `job` now if a slot is free (or the thread already holds one), otherwise queue it. Returns true if it started. */
     submit(job: QueuedStart): boolean;
     /** Remove queued jobs of a thread (archive, stop). */

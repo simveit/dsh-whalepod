@@ -15,17 +15,17 @@
  * itself there.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { ThreadInfo } from './contract.ts'
+import type { ThreadInfo } from '../types.ts'
 import { FolderLine, type PickResult } from './folder.tsx'
 import { Monogram } from './identity.tsx'
 import { IconChevron, IconCoordinator, IconOverview, IconWarning } from './icons.tsx'
 import { NS, type Translate } from './locales.ts'
 import type { UseCoordinator } from './panel.tsx'
 import {
-  coordinatorById, GROUPS, groupOf, isLoading, nameOf, pickCoordinator, roleOf, sortThreads, threadsOf, type CoordinatorStore, type ThreadGroup,
+  coordinatorById, errorText, GROUPS, groupOf, isLoading, nameOf, pickCoordinator, roleOf, sortThreads, threadsOf, type CoordinatorStore, type ThreadGroup,
 } from './store.ts'
 import { dshCopy } from './permission.tsx'
-import { openThreadSession, threadDetail, threadTooltip, ThreadActions, ThreadGlyph, ThreadStatusText, ThreadTime, shortenCwd, useNow, type RowActionHandlers } from './thread-row.tsx'
+import { openThreadSession, threadDetail, threadTooltip, ThreadActions, ThreadGlyph, ThreadStatusText, ThreadTime, useNow, type RowActionHandlers } from './thread-row.tsx'
 import { Button, Tooltip } from './ui.tsx'
 
 /** Tab kind (what `openTab` names) and implementation id (the key the body registers under). */
@@ -36,10 +36,6 @@ export const PANE_ID = 'dsh-coordinator/threads'
 const NARROW_PX = 768
 const PREF_KEY = 'dsh-coordinator:pane'
 const FINISHED_KEY = 'dsh-coordinator:pane-finished'
-
-export type PaneRole = 'coordinator' | 'thread'
-/** `roleOf(snapshot, sessionId)` lives in store.ts (pure, tested there); re-exported for older imports. */
-export { roleOf } from './store.ts'
 
 // ---- dsh right Sidebar faces (the parts used here; rc.2 `ISidebarRight` / `SidebarRightTabRegistry`) ----
 
@@ -281,7 +277,7 @@ export function ThreadsPane({ useTabInfo, sessionId, useCoordinator, t, dshAppro
 
   const run = (action: () => Promise<void>, failure: (reason: string) => string) => {
     setNotice(undefined)
-    action().catch((error: unknown) => { setNotice(failure(error instanceof Error ? error.message : String(error))) })
+    action().catch((error: unknown) => { setNotice(failure(errorText(error))) })
   }
   const open = (thread: ThreadInfo) => {
     if (thread.sessionId === sessionId) return

@@ -37,12 +37,6 @@ export class RateWindow {
   resetWhere(match: (key: string) => boolean): void {
     for (const key of [...this.hits.keys()]) if (match(key)) this.hits.delete(key)
   }
-
-  /** When the oldest hit of `key` leaves the window (ms since the epoch), or now when there is none. */
-  freeAt(key: string): number {
-    const first = this.hits.get(key)?.[0]
-    return first === undefined ? this.now() : first + this.windowMs()
-  }
 }
 
 /** A Set that forgets its oldest entries beyond `max`. */
@@ -56,5 +50,4 @@ export class BoundedSet<T> {
     this.items.add(item)
     while (this.items.size > this.max) this.items.delete(this.items.values().next().value as T)
   }
-  get size(): number { return this.items.size }
 }

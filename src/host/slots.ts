@@ -40,8 +40,6 @@ export class Slots {
   /** Thread ids waiting for a slot, oldest first. */
   waiting(): string[] { return this.queue.map(q => q.threadId) }
 
-  isQueued(threadId: string): boolean { return this.queue.some(q => q.threadId === threadId) }
-
   /** Run `job` now if a slot is free (or the thread already holds one), otherwise queue it. Returns true if it started. */
   submit(job: QueuedStart): boolean {
     if (this.queue.length === 0 && this.free(job.threadId)) {

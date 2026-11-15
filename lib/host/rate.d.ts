@@ -12,8 +12,6 @@ export declare class RateWindow {
     reset(key: string): void;
     /** Forget the hits of every key that matches (the user resumed one side of a pair). */
     resetWhere(match: (key: string) => boolean): void;
-    /** When the oldest hit of `key` leaves the window (ms since the epoch), or now when there is none. */
-    freeAt(key: string): number;
 }
 /** A Set that forgets its oldest entries beyond `max`. */
 export declare class BoundedSet<T> {
@@ -22,5 +20,4 @@ export declare class BoundedSet<T> {
     constructor(max: number);
     has(item: T): boolean;
     add(item: T): void;
-    get size(): number;
 }
