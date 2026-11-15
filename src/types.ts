@@ -143,6 +143,36 @@ export interface CoordinatorInfo {
    * Applies to Executor Sessions started after the save. Only the owner sets it, with `setExecutorPrompt`.
    */
   executorPrompt?: string
+  /**
+   * The coordinator's memory: one page of markdown notes it keeps across compaction and restarts (max 6000 chars,
+   * cleaned like the Executor prompt). Absent when empty. The coordinator and the Leads of its Executor Sessions read
+   * and replace it with `memory_read` and `memory_update`; the owner with `setCoordinatorMemory`. The coordinator also
+   * gets it as runtime context after the conversation.
+   */
+  memory?: string
+  /**
+   * Revision of `memory`: a whole number that grows by one with every change of the text (0 for a memory that was
+   * never written). A write names the revision it is based on and is refused when the memory changed since.
+   */
+  memoryRevision?: number
+  /**
+   * Who changed `memory` last and when: the owner on the page (`user`), the coordinator, or the Lead of an Executor
+   * Session (`executorId`, with `executorTitle` while its row exists; the title is executor text). Absent for a memory
+   * that was never written.
+   */
+  memoryBy?: { by: 'user' | 'coordinator' | 'executor'; executorId?: string; executorTitle?: string; at: number }
+  /**
+   * The Executor Sessions that changed `memory` since the owner last saved it on the page, oldest first (at most 20;
+   * `title` while the row exists; the title is executor text). A write by the coordinator leaves the list as it is;
+   * only the owner's `setCoordinatorMemory` with the current revision clears it, also when the text stays the same.
+   * Absent when there is none.
+   */
+  memoryExecutors?: { id: string; title?: string }[]
+  /**
+   * The owner switched this coordinator's memory off (`setCoordinatorMemoryEnabled`): the coordinator gets no memory
+   * text, the memory tools are refused for it and for its Executor Sessions, and the text is kept. Absent while it is on.
+   */
+  memoryOff?: boolean
   /** Real path of the chat's header cwd and its sidebar Workspace; fixed for life. */
   home: string
   /** Real path new threads' folders go under; the user can change it. */
@@ -229,6 +259,30 @@ export interface SetCoordinatorFolderRequest {
 export interface SetExecutorPromptRequest {
   coordinatorId: string
   text: string
+}
+
+/** Request of `coordinator/setCoordinatorMemory`. `text` replaces the whole memory; empty clears it. */
+export interface SetCoordinatorMemoryRequest {
+  coordinatorId: string
+  text: string
+  /** The `memoryRevision` the text is based on (what the page showed when the user started editing). */
+  revision: number
+}
+
+/**
+ * Result of `coordinator/setCoordinatorMemory`. `saved` is false when the memory changed since the request's
+ * revision: nothing was saved, and `coordinator` carries the current text and revision.
+ */
+export interface SetCoordinatorMemoryResult {
+  saved: boolean
+  coordinator: CoordinatorInfo
+}
+
+/** Request of `coordinator/setCoordinatorMemoryEnabled`; returns the updated `CoordinatorInfo`. */
+export interface SetCoordinatorMemoryEnabledRequest {
+  coordinatorId: string
+  /** False switches the coordinator's memory off (the text is kept); true switches it on again. */
+  enabled: boolean
 }
 
 /** Request of `coordinator/renameCoordinator`; returns the updated `CoordinatorInfo`. */

@@ -22,9 +22,15 @@ export declare const TOOL: {
     readonly peers: "executor_peers";
     readonly send: "executor_send";
     readonly report: "coordinator_report";
+    readonly memory: "memory_update";
+    readonly memoryRead: "memory_read";
+    readonly checkLater: "executor_check_later";
 };
 export type ToolKey = keyof typeof TOOL;
-/** Tool names of releases before the rename; they still appear in existing Session logs. */
+/**
+ * Tool names of releases before the rename; they still appear in existing Session logs. A tool that never had another
+ * name lists its current one (as `coordinator_report` does), so every lookup stays total.
+ */
 export declare const LEGACY_TOOL: {
     readonly [K in ToolKey]: string;
 };

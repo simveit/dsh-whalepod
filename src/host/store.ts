@@ -15,7 +15,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, sep } from 'node:path'
 import type { ThreadInfo } from '../types.ts'
-import { ARCHIVED_COORDINATORS_KEEP, checkCoordinatorName, cleanExecutorPrompt, COORDINATOR_TITLE, EXECUTOR_PROMPT_MAX, isCoordinatorId, newCoordinatorId } from './ids.ts'
+import { ARCHIVED_COORDINATORS_KEEP, checkCoordinatorName, cleanExecutorPrompt, cleanMemory, COORDINATOR_TITLE, EXECUTOR_PROMPT_MAX, isCoordinatorId, isExecutorId, MEMORY_MAX, MEMORY_RAW_MAX, newCoordinatorId } from './ids.ts'
 import type { PersistedFacts } from './status.ts'
 
 export interface PersistedThread {
@@ -41,6 +41,14 @@ export interface PersistedThread {
   archived?: boolean
 }
 
+/** Who changed a coordinator's memory: the owner on the page, the coordinator, or the Lead of one of its Executor Sessions. */
+export interface MemoryWriter {
+  by: 'user' | 'coordinator' | 'executor'
+  /** For `executor`: the Executor Session's id (`t-…`). */
+  executor?: string
+  at: number
+}
+
 export interface PersistedCoordinator {
   /** `c-` + 4 hex, unique. */
   id: string
@@ -58,6 +66,23 @@ export interface PersistedCoordinator {
   name?: string
   /** The user's Executor prompt for this coordinator's Executor Sessions (max 4000 chars). */
   executorPrompt?: string
+  /**
+   * The coordinator's memory, one markdown page (max 6000 chars) that it shares with the Leads of its Executor
+   * Sessions; written with `memory_update` by the coordinator or a Lead, or by the owner on the page.
+   */
+  memory?: string
+  /** Revision of `memory`: a whole number that grows by one with every change of the text; absent means 0. */
+  memoryRevision?: number
+  /** Who changed `memory` last, and when. */
+  memoryBy?: MemoryWriter
+  /**
+   * The Executor Sessions (row ids, oldest first, at most `MEMORY_EXECUTORS_MAX`) that changed `memory` since the
+   * owner last saved it on the Coordinator page. Only the owner's save clears it: a later write by the coordinator
+   * changes `memoryBy` but leaves this mark, so executor text in the page stays marked until the owner has seen it.
+   */
+  memoryExecutors?: string[]
+  /** The owner switched this coordinator's memory off: nobody is shown the text or may change it by tool; it is kept. */
+  memoryOff?: boolean
   /** Which log mark validation expects: the opening turn (or the legacy title), or the role mark of an adopted chat. */
   marks?: 'opening' | 'role'
   /** Chat Sessions this coordinator had before a Reopen; messages they sent into threads still read as the coordinator's. */
@@ -191,6 +216,18 @@ function coordinatorOf(value: unknown): PersistedCoordinator | undefined {
     ...(typeof c.title === 'string' ? { title: c.title.slice(0, 200) } : {}),
     ...(() => { const checked = checkCoordinatorName(c.name); return 'name' in checked ? { name: checked.name } : {} })(),
     ...(() => { const prompt = storedPrompt(c.executorPrompt); return prompt === undefined ? {} : { executorPrompt: prompt } })(),
+    ...(() => {
+      const memory = storedMemory(c.memory)
+      // A text that loading cleaned or dropped is a new text, so it gets a new revision like any other change.
+      const revision = storedMemoryRevision(c.memoryRevision) + (c.memory !== undefined && c.memory !== memory ? 1 : 0)
+      const by = storedMemoryWriter(c.memoryBy)
+      const executors = storedMemoryExecutors(c.memoryExecutors)
+      return {
+        ...(memory === undefined ? {} : { memory }), ...(revision === 0 ? {} : { memoryRevision: revision }), ...(by === undefined ? {} : { memoryBy: by }),
+        ...(executors.length === 0 ? {} : { memoryExecutors: executors }),
+      }
+    })(),
+    ...(c.memoryOff === true ? { memoryOff: true } : {}),
     ...(c.marks === 'opening' || c.marks === 'role' ? { marks: c.marks } : {}),
     ...(Array.isArray(c.pastSessionIds) ? { pastSessionIds: c.pastSessionIds.filter((s): s is string => typeof s === 'string').slice(-10) } : {}),
     createdAt: isNumber(c.createdAt) ? c.createdAt : 0,
@@ -205,6 +242,51 @@ export function storedPrompt(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const clean = cleanExecutorPrompt(value)
   return clean === '' || clean.length > EXECUTOR_PROMPT_MAX ? undefined : clean
+}
+
+/** A stored coordinator memory, cleaned and within the cap like the Executor prompt, or undefined (dropped). */
+export function storedMemory(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > MEMORY_RAW_MAX) return undefined
+  const clean = cleanMemory(value)
+  return clean === '' || clean.length > MEMORY_MAX ? undefined : clean
+}
+
+/**
+ * The highest memory revision a state file may carry. A page is far from it in any real use; a higher stored value
+ * could reach the top of the safe integers, where the next revision is no number a write can name (`revisionArg`
+ * and `setCoordinatorMemory` take safe integers only), and the page could never be written again.
+ */
+export const MEMORY_REVISION_MAX = 2 ** 52
+
+/** A stored memory revision: a whole number from 0 to `MEMORY_REVISION_MAX`; anything else reads as 0 (absent). */
+export function storedMemoryRevision(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MEMORY_REVISION_MAX ? value : 0
+}
+
+/**
+ * A stored last writer of a memory: a known kind, an Executor Session id for an executor, and a time; else undefined
+ * (dropped). A writer without a real time is dropped too, so the page never shows a change dated 1970.
+ */
+export function storedMemoryWriter(value: unknown): MemoryWriter | undefined {
+  if (value === null || typeof value !== 'object') return undefined
+  const { by, executor, at } = value as Partial<Record<keyof MemoryWriter, unknown>>
+  if (!isNumber(at) || at <= 0) return undefined
+  if (by === 'user' || by === 'coordinator') return { by, at }
+  return by === 'executor' && isExecutorId(executor) ? { by, executor, at } : undefined
+}
+
+/** Most Executor Sessions kept in `memoryExecutors`; past it the oldest ids are dropped. */
+export const MEMORY_EXECUTORS_MAX = 20
+
+/**
+ * A stored `memoryExecutors`: the entries that look like Executor Session ids, each once, the last
+ * `MEMORY_EXECUTORS_MAX`. A repeated id keeps its last position, as a repeated writer does while the plugin runs
+ * (`storeMemory` moves it to the end).
+ */
+export function storedMemoryExecutors(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const ids = value.filter(isExecutorId)
+  return ids.filter((id, index) => ids.lastIndexOf(id) === index).slice(-MEMORY_EXECUTORS_MAX)
 }
 
 /** The fields version 1 and 2 share. */

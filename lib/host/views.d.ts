@@ -43,6 +43,8 @@ export interface ThreadSummaryFacts {
         label?: string;
         state: string;
     }[];
+    /** The Lead's current todo list as compact lines (history.ts `todoLines`; thread text). */
+    todos?: string;
 }
 /** `executor_read` summary: trusted status facts plus a data block with everything the thread wrote. */
 export declare function threadSummaryView(thread: ThreadInfo, facts: ThreadSummaryFacts): ToolView;

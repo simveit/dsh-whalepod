@@ -23,11 +23,17 @@ export const TOOL = {
   peers: 'executor_peers',
   send: 'executor_send',
   report: 'coordinator_report',
+  memory: 'memory_update',
+  memoryRead: 'memory_read',
+  checkLater: 'executor_check_later',
 } as const
 
 export type ToolKey = keyof typeof TOOL
 
-/** Tool names of releases before the rename; they still appear in existing Session logs. */
+/**
+ * Tool names of releases before the rename; they still appear in existing Session logs. A tool that never had another
+ * name lists its current one (as `coordinator_report` does), so every lookup stays total.
+ */
 export const LEGACY_TOOL: { readonly [K in ToolKey]: string } = {
   start: 'thread_start',
   message: 'thread_message',
@@ -39,6 +45,9 @@ export const LEGACY_TOOL: { readonly [K in ToolKey]: string } = {
   peers: 'thread_peers',
   send: 'thread_send',
   report: 'coordinator_report',
+  memory: 'memory_update',
+  memoryRead: 'memory_read',
+  checkLater: 'executor_check_later',
 }
 
 const BY_NAME: ReadonlyMap<string, ToolKey> = new Map(

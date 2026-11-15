@@ -1,7 +1,9 @@
-import type { ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelHealth, ReportKind, ThreadInfo, ThreadPermissionState } from '../types.ts';
+import type { ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelHealth, ReportKind, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermissionState } from '../types.ts';
 import { type GuardFs } from './cwd-guard.ts';
 import type { HostContext, SessionId } from './dsh.ts';
 import { type CoordinatorConfig } from './ids.ts';
+import { type Timers } from './notices.ts';
+import { type MemoryWriter } from './store.ts';
 import { type ThreadOps } from './tools.ts';
 import { type ToolView } from './views.ts';
 /**
@@ -12,6 +14,23 @@ import { type ToolView } from './views.ts';
 export declare const SESSION_PRESET = "standard";
 /** Preset names of releases before this one; Sessions carrying them are moved to `standard` once (migrateLegacy). */
 export declare const LEGACY_PRESETS: readonly ["thread", "coordinator"];
+/**
+ * How long a due look-in waits again while its coordinator runs a turn, and once when its executor is between two
+ * turns at the due time.
+ */
+export declare const LOOK_IN_DEFER_MS = 30000;
+/** Changed `memory_update` writes one writer (a coordinator, or one Executor Session) may make within the window; further ones are refused. */
+export declare const MEMORY_UPDATES_MAX = 10;
+export declare const MEMORY_UPDATES_WINDOW_MS: number;
+/**
+ * Changed `memory_update` writes all Executor Sessions of one coordinator together may make to its page within the
+ * window, on top of the limit per writer. The coordinator's own writes and the owner's edits are outside it, so
+ * executors cannot keep either from saving.
+ */
+export declare const MEMORY_EXECUTOR_UPDATES_MAX = 30;
+/** `progress` Reports of one executor that make a notice within the window; further ones are recorded without one. */
+export declare const PROGRESS_NOTICES_MAX = 20;
+export declare const PROGRESS_NOTICES_WINDOW_MS: number;
 export interface Prompts {
     coordinator: string;
     thread: string;
@@ -29,6 +48,8 @@ export interface ThreadServiceDeps {
     /** System temp folders for the Ask me write rule. */
     tempDirs?: string[];
     now?: () => number;
+    /** Timers of look-ins; real timers by default. */
+    timers?: Timers;
     /** A problem found before the service started: shown in the panel. */
     startupProblem?: HostProblem;
 }
@@ -38,6 +59,68 @@ export interface ThreadServiceDeps {
  * does not contain it). Teammates get it only through the Lead.
  */
 export declare function executorPromptSection(text: string): string;
+/** The tag around a memory text: `coordinator-memory-` and 8 hex digits of a keyed hash of the text. */
+export declare function memoryTag(text: string): string;
+/** Who reads or writes a memory page through the tools: its coordinator, or the Lead of one of its Executor Sessions. */
+export type MemoryRole = 'coordinator' | 'executor';
+/**
+ * The last writer of a memory in the plugin's own words, for the reader's role: "the user, on the Coordinator page",
+ * the coordinator ("you" to itself), or an Executor Session by its id (never by its title, which is executor text).
+ * @param self - the reading Lead's own Executor Session id.
+ */
+export declare function memoryWriterText(writer: MemoryWriter, role: MemoryRole, self?: string): string;
+/**
+ * The Executor Sessions that changed a memory since the owner last saved it on the Coordinator page, in the plugin's
+ * own words and by id only. A later write by the coordinator names a new last writer but leaves this line, so
+ * executor text in the page stays marked until the owner's save.
+ * @returns the sentence, or an empty string when there is none.
+ */
+export declare function memoryExecutorsText(executors: readonly string[]): string;
+/**
+ * The coordinator's memory as runtime context (`dsh-coordinator:memory`), always present for a stored coordinator: the
+ * page of notes, between tags whose suffix is a keyed hash of the text (`memoryTag`), or a line that it is empty. dsh
+ * sends it inside a user-role `<system-reminder>` snapshot after the retained history, so the paragraph says that the
+ * notes are not the user's message: they never authorise anything the host asks the user for. Since the Leads of the
+ * coordinator's Executor Sessions write the page too, it also says that parts may come from one, and it names the
+ * revision, which `memory_update` must be given back, who changed the page last, and which Executor Sessions changed
+ * it since the owner last saved it (`memoryExecutorsText`).
+ */
+export declare function coordinatorMemoryContext(text: string, revision?: number, writer?: MemoryWriter, executors?: readonly string[]): string;
+/**
+ * What a coordinator whose memory the owner switched off gets in place of its memory: no text of the memory, only the
+ * fact, so that an earlier copy in the conversation stops counting and the model does not call the tools in vain.
+ */
+export declare const MEMORY_OFF_CONTEXT: string;
+/** The one line the memory tools answer with while the owner has the memory switched off: for a read, and for a write. */
+export declare function memoryOffLine(role: MemoryRole, write: boolean): string;
+/** A memory page as the tools show it: the text, its revision, its last writer and the executors that changed it since the owner's last save. */
+export interface MemoryPage {
+    text: string;
+    revision: number;
+    writer?: MemoryWriter;
+    executors?: readonly string[];
+    /** The reading Lead's own Executor Session id. */
+    self?: string;
+}
+/**
+ * A memory page as the memory tools return it (`memory_read`, and with an `error` a refused `memory_update`): the
+ * revision, the size, who changed it last, which Executor Sessions changed it since the owner last saved it
+ * (`executorChanges`), and the text between tags under a paragraph that says what it is and what it can never do. A coordinator gets the keyed tag of its own snapshot (`memoryTag`); a Lead gets a random suffix per
+ * call, so an executor, which can also write the page, never learns the tag that surrounds a text in its coordinator's
+ * context.
+ */
+export declare function memoryPageView(page: MemoryPage, role: MemoryRole): ToolView;
+/**
+ * What `memory_update` returns when the text it was given is based on another revision than the current one, or on
+ * none: nothing was saved, and the current page comes back (`memoryPageView`) so the writer merges and sends again.
+ * @param given - the revision the call named, or undefined when it named none.
+ */
+export declare function memoryConflictView(page: MemoryPage, role: MemoryRole, given: number | undefined): ToolView;
+/**
+ * Order of the memory among the runtime contexts. `getContextOrder` only knows dsh's own names (100 to 210 in
+ * dsh 0.2.2), so a plugin passes a number: after dsh's facts about the session, clear of its band.
+ */
+export declare const MEMORY_CONTEXT_ORDER = 300;
 export declare class ThreadService implements ThreadOps {
     private readonly records;
     private readonly bySession;
@@ -119,6 +202,9 @@ export declare class ThreadService implements ThreadOps {
     /** Peer messages per unordered thread pair and per sender (A6). */
     private readonly peerPairs;
     private readonly peerSenders;
+    /** Changed memory writes per writer (coordinator id or executor id), and `progress` Reports that made a notice per executor. */
+    private readonly memoryWrites;
+    private readonly progressNotices;
     /** Pairs the coordinator was already told about, until their window frees up. */
     /** Threads being archived by the plugin itself (their archive event is not the sidebar's). */
     private readonly archiving;
@@ -146,6 +232,7 @@ export declare class ThreadService implements ThreadOps {
     private readonly fs;
     private readonly home;
     private readonly now;
+    private readonly timers;
     /** Settles when the restore pass (live status, logs, queued briefs) is done; for tests. */
     readonly ready: Promise<void>;
     constructor(ctx: HostContext, config: CoordinatorConfig, stateFile: string, prompts: Prompts, deps?: ThreadServiceDeps);
@@ -246,6 +333,20 @@ export declare class ThreadService implements ThreadOps {
     /** Every coordinator for the page: live ones first, newest first; archived ones last. */
     private coordinatorInfos;
     private coordinatorInfo;
+    /**
+     * The title of one of a coordinator's own Executor Sessions, for the page (executor text, for display only), while
+     * its row exists. An id that a memory names is not given to a new row (`memoryWriterIds`); a row of another
+     * coordinator with that id can only come from a state file edited by hand, and is not it.
+     */
+    private executorTitleOf;
+    /**
+     * The row ids that some coordinator's memory names as a writer (`memoryExecutors`, `memoryBy`). A new Executor
+     * Session never gets one of them: the row of a writer can be pruned or deleted while the mark stands, and a new row
+     * with its id would be shown, with its title, as the Executor Session that changed the page.
+     */
+    private memoryWriterIds;
+    /** The last writer of a memory for the page; an executor comes with its title when its row still exists. */
+    private memoryWriterInfo;
     /** Where a coordinator's chat stands, for the page (open, archived, gone, or never had one). */
     private chatState;
     /** Archived rows for the page: newest first, at most 30 per coordinator. */
@@ -609,6 +710,74 @@ export declare class ThreadService implements ThreadOps {
         text?: unknown;
     }): CoordinatorInfo;
     /**
+     * Whose memory page a memory tool call works on, and as whom: a stored coordinator on its own page, or the Lead of a
+     * live Executor Session on the page of the coordinator that owns its row. The page is never named by an argument, so
+     * no caller reaches another coordinator's memory. Teammates are separate Sessions without a row: they are refused
+     * like any other Session, and so is a candidate until a typed message makes it a coordinator.
+     */
+    private memoryCaller;
+    /** A coordinator's memory page as the tools show it to `who`. */
+    private memoryPage;
+    /**
+     * `memory_read`: the memory page of the caller's own coordinator, whole, with its revision and its last writer
+     * (`memoryPageView`). For a coordinator (which also has the page in its context) and for the Leads of its Executor
+     * Sessions, which start without it. Reading is safe because the page grants nothing. While the owner has the memory
+     * switched off, the call is refused with one line.
+     */
+    readMemory(caller: SessionId): ToolView;
+    /**
+     * The page as a memory tool hands it to its caller. When that is the coordinator and Executor Sessions changed the
+     * page since the owner last saved it, the coordinator's turn has now read executor text on request, which counts
+     * like any other Executor Session data in that turn (`executorMemoryInTurn`). The snapshot in the coordinator's
+     * context does not count: it is in every request, so it would lower every Assignment.
+     */
+    private shownMemoryPage;
+    /**
+     * `memory_update`: replace the memory page of the caller's own coordinator with the complete new text (empty clears
+     * it). The coordinator and the Leads of its Executor Sessions write the same page under the same rules; any turn may
+     * call it, since the memory never authorises anything (see `coordinatorMemoryContext`).
+     * The call names the revision its text is based on: when that is not the current one (or none is given), nothing
+     * changes and the current page comes back (`memoryConflictView`), so a change made meanwhile by another writer is
+     * merged and not overwritten.
+     * At most `MEMORY_UPDATES_MAX` changed writes per writer (the coordinator, or one Executor Session) within
+     * `MEMORY_UPDATES_WINDOW_MS`, and at most `MEMORY_EXECUTOR_UPDATES_MAX` by all Executor Sessions of the coordinator
+     * together: each one saves the state file and can make dsh log a new snapshot of the memory into the coordinator's
+     * chat. A refused call is not counted, as with the plugin's other limits. The owner's edits on the page are not
+     * counted.
+     * While the owner has the memory switched off, every call is refused with one line.
+     */
+    updateMemory(caller: SessionId, text: string, revision: number | undefined): ToolView;
+    /**
+     * The owner sets a coordinator's memory (a Remote method; only the owner may call it). Empty text clears it. The
+     * request names the revision the text is based on; when the memory changed since (the coordinator rewrote it while
+     * the owner was editing), nothing is saved and `saved` is false, with the current text and revision in `coordinator`.
+     * Works while the memory is switched off too: the owner still sees and edits the kept text.
+     * A save with the current revision also clears the mark of the Executor Sessions that changed the page
+     * (`memoryExecutors`), with or without a change of the text: the owner has the page in front of them and keeps it.
+     */
+    setCoordinatorMemory(request: {
+        coordinatorId?: unknown;
+        text?: unknown;
+        revision?: unknown;
+    }): SetCoordinatorMemoryResult;
+    /**
+     * The owner switches a coordinator's memory on or off (a Remote method; only the owner may call it; no model tool
+     * can). Off: the coordinator gets no memory text (`MEMORY_OFF_CONTEXT`), `memory_read` and `memory_update` are
+     * refused with one line for the coordinator and for its Leads, and the stored text and its revision stay as they are.
+     */
+    setCoordinatorMemoryEnabled(request: {
+        coordinatorId?: unknown;
+        enabled?: unknown;
+    }): CoordinatorInfo;
+    /**
+     * Store a cleaned memory (empty clears it). A change gets the next memory revision and its writer, bumps the state
+     * revision, so the page sees it, and is saved at once. The unchanged text changes nothing, its writer included.
+     * An executor's change adds it to `memoryExecutors`; only the owner's save clears that mark, also when it keeps the
+     * text. An executor's change while the coordinator runs a turn counts as Executor Session data in that turn
+     * (`executorMemoryInTurn`): the turn's next request carries the new page.
+     */
+    private storeMemory;
+    /**
      * Rename a coordinator (a Remote method; only the owner may call it): 1 to 40 characters, no control characters,
      * unique among the live coordinators. Its chat and group follow when they carry the plugin's title; folders are
      * never renamed.
@@ -816,6 +985,46 @@ export declare class ThreadService implements ThreadOps {
         to: string;
         delivery: string;
     }>;
+    /**
+     * Whether an executor is in a run of work a look-in may watch: queued or starting, its tree running, waiting on the
+     * user, or about to start the turn a coordinator message opens. Not when its run ended, it is paused by a spend
+     * guard, waits for a folder confirmation, or is archived.
+     */
+    private lookInLive;
+    /** Drop an executor's pending look-in: its timer, or its notice in the batcher (which then no longer matches). */
+    private cancelLookIn;
+    /** Whether the coordinator that owns this executor runs a turn now (a due look-in waits for it). */
+    private coordinatorBusy;
+    /**
+     * `executor_check_later`: schedule one look-in at one of the caller's own executors, replacing a pending one; 0
+     * minutes cancels. The gap is clamped to [checkLaterMinMinutes, 240]. Refused for an executor that is not working
+     * (its notices cover it) and past `checkLaterMaxPerExecutor` look-ins since the user last wrote: the count starts
+     * over only when the user writes in the coordinator's chat or in the executor, or resumes it. Neither the end of a
+     * run nor the coordinator's own message resets it, so a look-in, a reminder and the turn it starts cannot repeat
+     * without the user.
+     */
+    checkLater(caller: SessionId, ref: string, minutes: number, focus: string | undefined): unknown;
+    private armLookIn;
+    /**
+     * A due look-in. Dropped when the coordinator's chat is closed. An executor that is not working is looked at once
+     * more after `LOOK_IN_DEFER_MS` (it may be between two turns of its Lead), then the look-in is dropped. It waits
+     * again while the coordinator runs a turn. Otherwise it becomes a waking `lookIn` notice with the Lead's todo list
+     * (from its log) and previews of its latest Reports and message. The look-in stays pending (`due`) until that
+     * notice is delivered or dropped, so a cancel or a new schedule still reaches it.
+     */
+    private fireLookIn;
+    /**
+     * Look-ins at delivery. One that was cancelled or replaced since it came due is dropped. One whose executor also
+     * has another waking notice in the batch is dropped (that notice wakes the coordinator anyway). One whose
+     * coordinator is running a turn now goes back to its timer for `LOOK_IN_DEFER_MS`: it stays the executor's pending
+     * look-in, so a cancel reaches it, and its content is collected again when it next comes due.
+     */
+    private lookInsReady;
+    /**
+     * The look-ins of a batch are over: each leaves its executor's pending slot, and one that reached the coordinator
+     * counts toward `checkLaterMaxPerExecutor`. A look-in dropped on the way is not counted.
+     */
+    private settleLookIns;
     /**
      * Apply the wake guard (M5): past the limit a thread's notices arrive quietly, and the guard latches: the thread is
      * paused until the user resumes it, and the coordinator is told once (pause()).

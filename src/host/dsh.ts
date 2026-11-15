@@ -218,7 +218,14 @@ export interface Tools {
 }
 
 export interface SystemPrompt {
+  /** A system prompt section: part of the cached prefix; on an in-history route a change re-sends the whole prompt. */
   section(section: { name: string; order: number; text: (context: { agent?: Agent }) => string; interpolate?: boolean }): () => void
+  /**
+   * Runtime context (dsh `PromptContext`): agent-loop logs the complete current snapshot of every context as one
+   * user-role `runtime-context` message after the retained history, only when it changed or compaction removed it.
+   * Empty text contributes nothing; `required` keeps it when optional runtime context is suppressed.
+   */
+  context(context: { name: string; order: number; text: (context: { agent?: Agent }) => string; interpolate?: boolean; required?: boolean }): () => void
 }
 
 /** The context the thread service runs in, after its services are injected. */

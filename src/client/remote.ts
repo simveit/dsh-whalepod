@@ -13,7 +13,8 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 // contract.ts re-exports the older wire types; the round-2 additions are imported from their owner directly.
 import type {
   ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CreateCoordinatorRequest, EnsureCoordinatorRequest, PingResult,
-  DeleteCoordinatorRequest, DeleteCoordinatorResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetExecutorPromptRequest,
+  DeleteCoordinatorRequest, DeleteCoordinatorResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult,
+  SetExecutorPromptRequest,
 } from '../types.ts'
 import type { CoordinatorState, EnsureCoordinatorResult, ThreadInfo, ThreadPermissionState } from './contract.ts'
 
@@ -50,6 +51,12 @@ const coordinatorInfoSchema = (): z.ZodType<CoordinatorInfo> => (coordinatorInfo
   name: z.string().catch(''),
   title: z.string(),
   executorPrompt: z.string().optional().catch(undefined),
+  memory: z.string().optional().catch(undefined),
+  // A host without revisions sends none; a bad value reads as absent (the client then counts from 0).
+  memoryRevision: z.number().int().nonnegative().optional().catch(undefined),
+  memoryBy: z.object({ by: z.enum(['user', 'coordinator', 'executor']), executorId: z.string().optional(), executorTitle: z.string().optional(), at: z.number() }).optional().catch(undefined),
+  memoryExecutors: z.array(z.object({ id: z.string(), title: z.string().optional() })).optional().catch(undefined),
+  memoryOff: z.boolean().optional().catch(undefined),
   home: z.string(),
   folder: z.string(),
   folderProblem: z.string().optional().catch(undefined),
@@ -125,6 +132,12 @@ let folderRequest: z.ZodType<SetCoordinatorFolderRequest> | undefined
 const folderRequestSchema = (): z.ZodType<SetCoordinatorFolderRequest> => (folderRequest ??= z.object({ coordinatorId: z.string(), path: z.string() }))
 let promptRequest: z.ZodType<SetExecutorPromptRequest> | undefined
 const promptRequestSchema = (): z.ZodType<SetExecutorPromptRequest> => (promptRequest ??= z.object({ coordinatorId: z.string(), text: z.string() }))
+let memoryRequest: z.ZodType<SetCoordinatorMemoryRequest> | undefined
+const memoryRequestSchema = (): z.ZodType<SetCoordinatorMemoryRequest> => (memoryRequest ??= z.object({ coordinatorId: z.string(), text: z.string(), revision: z.number().int().nonnegative() }))
+let memoryResult: z.ZodType<SetCoordinatorMemoryResult> | undefined
+const memoryResultSchema = (): z.ZodType<SetCoordinatorMemoryResult> => (memoryResult ??= z.object({ saved: z.boolean(), coordinator: coordinatorInfoSchema() }) as z.ZodType<SetCoordinatorMemoryResult>)
+let memoryEnabledRequest: z.ZodType<SetCoordinatorMemoryEnabledRequest> | undefined
+const memoryEnabledRequestSchema = (): z.ZodType<SetCoordinatorMemoryEnabledRequest> => (memoryEnabledRequest ??= z.object({ coordinatorId: z.string(), enabled: z.boolean() }))
 let renameRequest: z.ZodType<RenameCoordinatorRequest> | undefined
 const renameRequestSchema = (): z.ZodType<RenameCoordinatorRequest> => (renameRequest ??= z.object({ coordinatorId: z.string(), name: z.string() }))
 let deleteRequest: z.ZodType<DeleteCoordinatorRequest> | undefined
@@ -223,6 +236,22 @@ export const TYPERT_REMOTE = createTypertRemoteInfo({
       description: 'Set the standing instructions every new Executor Session of a coordinator starts with; empty text clears them.',
       invocation: { kind: 'direct' },
       parameters: [requestParameter('SetExecutorPromptRequest', promptRequestSchema)],
+      cancellation: { parameter: 'signal' },
+      result: { mode: 'strict', typeSymbol: `${PACKAGE}#CoordinatorInfo`, create: coordinatorInfoSchema },
+    },
+    'coordinator/setCoordinatorMemory': {
+      service: 'coordinator',
+      description: 'Replace a coordinator\'s memory, one page of markdown notes, based on a revision; empty text clears it; a stale revision saves nothing.',
+      invocation: { kind: 'direct' },
+      parameters: [requestParameter('SetCoordinatorMemoryRequest', memoryRequestSchema)],
+      cancellation: { parameter: 'signal' },
+      result: { mode: 'strict', typeSymbol: `${PACKAGE}#SetCoordinatorMemoryResult`, create: memoryResultSchema },
+    },
+    'coordinator/setCoordinatorMemoryEnabled': {
+      service: 'coordinator',
+      description: 'Switch a coordinator\'s memory on or off; off keeps the text.',
+      invocation: { kind: 'direct' },
+      parameters: [requestParameter('SetCoordinatorMemoryEnabledRequest', memoryEnabledRequestSchema)],
       cancellation: { parameter: 'signal' },
       result: { mode: 'strict', typeSymbol: `${PACKAGE}#CoordinatorInfo`, create: coordinatorInfoSchema },
     },
@@ -336,6 +365,8 @@ export interface CoordinatorRemote {
   createCoordinator(request: CreateCoordinatorRequest | undefined, signal?: AbortSignal): Promise<RemoteResult<EnsureCoordinatorResult>>
   setCoordinatorFolder(request: SetCoordinatorFolderRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
   setExecutorPrompt(request: SetExecutorPromptRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
+  setCoordinatorMemory(request: SetCoordinatorMemoryRequest, signal?: AbortSignal): Promise<RemoteResult<SetCoordinatorMemoryResult>>
+  setCoordinatorMemoryEnabled(request: SetCoordinatorMemoryEnabledRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
   renameCoordinator(request: RenameCoordinatorRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
   archiveCoordinator(request: ArchiveRequest, signal?: AbortSignal): Promise<RemoteResult<ArchiveResult>>
   deleteCoordinator(request: DeleteCoordinatorRequest, signal?: AbortSignal): Promise<RemoteResult<DeleteCoordinatorResult>>

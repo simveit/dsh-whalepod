@@ -9,7 +9,7 @@
  * only names that are currently registered, so it is computed against the registry and re-applied when tools change.
  */
 /** The plugin's own coordinator tools. */
-export declare const COORDINATOR_OWN: readonly ["executor_start", "executor_message", "executor_list", "executor_read", "executor_flag_user", "executor_stop", "executor_archive"];
+export declare const COORDINATOR_OWN: readonly ["executor_start", "executor_message", "executor_list", "executor_read", "executor_flag_user", "executor_stop", "executor_archive", "memory_update", "memory_read", "executor_check_later"];
 /**
  * Stock tools the coordinator keeps: read and search local files, ask the user, its todos. No network tool. `session_search` is not
  * one of them (S1): it reads every Session log, other coordinators' chats and Executor Session output included, and

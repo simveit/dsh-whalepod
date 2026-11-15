@@ -12,7 +12,9 @@
 import { allSpellings, TOOL } from './names.ts'
 
 /** The plugin's own coordinator tools. */
-export const COORDINATOR_OWN = [TOOL.start, TOOL.message, TOOL.list, TOOL.read, TOOL.flagUser, TOOL.stop, TOOL.archive] as const
+export const COORDINATOR_OWN = [
+  TOOL.start, TOOL.message, TOOL.list, TOOL.read, TOOL.flagUser, TOOL.stop, TOOL.archive, TOOL.memory, TOOL.memoryRead, TOOL.checkLater,
+] as const
 
 /**
  * Stock tools the coordinator keeps: read and search local files, ask the user, its todos. No network tool. `session_search` is not

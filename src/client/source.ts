@@ -18,7 +18,7 @@
  * `readme` (neutral demo content for the README screenshots: a weather CLI and a docs site, no notices).
  */
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { CoordinatorInfo } from '../types.ts'
+import type { CoordinatorInfo, SetCoordinatorMemoryResult } from '../types.ts'
 import type { EnsureCoordinatorResult, FolderDecision, ThreadInfo, ThreadPermission, ThreadPermissionState, ThreadStatus } from './contract.ts'
 import type { ArchiveResult, ClientState, CoordinatorRemote } from './remote.ts'
 
@@ -32,6 +32,13 @@ export interface CoordinatorSource {
   setCoordinatorFolder(coordinatorId: string, path: string, signal?: AbortSignal): Promise<CoordinatorInfo>
   /** Standing instructions for the coordinator's new Executor Sessions; empty text clears them. */
   setExecutorPrompt(coordinatorId: string, text: string, signal?: AbortSignal): Promise<CoordinatorInfo>
+  /**
+   * Replace the coordinator's memory (its page of notes); empty text clears it. `revision` is the memory revision the text
+   * is based on; when the memory changed since, nothing is saved and the result says so with the current memory.
+   */
+  setCoordinatorMemory(coordinatorId: string, text: string, revision: number, signal?: AbortSignal): Promise<SetCoordinatorMemoryResult>
+  /** Switch the coordinator's memory on or off; off keeps the text. */
+  setCoordinatorMemoryEnabled(coordinatorId: string, enabled: boolean, signal?: AbortSignal): Promise<CoordinatorInfo>
   renameCoordinator(coordinatorId: string, name: string, signal?: AbortSignal): Promise<CoordinatorInfo>
   /** `force` also stops working Executor Sessions; `removeWorkspace` asks the host to remove its sidebar Workspace (files stay). */
   archiveCoordinator(coordinatorId: string, options: { force: boolean; removeWorkspace: boolean }, signal?: AbortSignal): Promise<ArchiveResult>
@@ -103,6 +110,8 @@ export function remoteSource(remote: () => CoordinatorRemote | undefined): Coord
     createCoordinator: (home, signal) => call(() => get().createCoordinator(home === undefined ? {} : { home }, signal)),
     setCoordinatorFolder: (coordinatorId, path, signal) => call(() => get().setCoordinatorFolder({ coordinatorId, path }, signal)),
     setExecutorPrompt: (coordinatorId, text, signal) => call(() => get().setExecutorPrompt({ coordinatorId, text }, signal)),
+    setCoordinatorMemory: (coordinatorId, text, revision, signal) => call(() => get().setCoordinatorMemory({ coordinatorId, text, revision }, signal)),
+    setCoordinatorMemoryEnabled: (coordinatorId, enabled, signal) => call(() => get().setCoordinatorMemoryEnabled({ coordinatorId, enabled }, signal)),
     renameCoordinator: (coordinatorId, name, signal) => call(() => get().renameCoordinator({ coordinatorId, name }, signal)),
     archiveCoordinator: (coordinatorId, { force, removeWorkspace }, signal) => call(() => get().archiveCoordinator({
       coordinatorId, ...(force ? { force } : {}), ...(removeWorkspace ? { removeWorkspace } : {}),
@@ -122,6 +131,11 @@ const FINISHED: readonly ThreadStatus[] = ['done', 'failed', 'stopped']
 /** A few of the host's built-in names, enough for the fake's New coordinator. */
 const FAKE_NAMES = ['Noether', 'Feynman', 'Hypatia', 'Borges', 'Lovelace', 'Tagore', 'Austen', 'Turing', 'Curie', 'Kant']
 const PROMPT_LIMIT = 4000
+const MEMORY_LIMIT = 6000
+/** A memory page as a coordinator might keep it (markdown), for the fake coordinators. */
+const FAKE_MEMORY_NOETHER = '## About you\n- Prefers short reports: result first, details on request.\n- Reviews pull requests in the morning; send links before 10:00.\n\n'
+  + '## Projects\n- api-gateway: CI runs on Node 22; the upload test is flaky under load, not broken.\n- tokenizer-bench: compare against main, never against the last release.'
+const FAKE_MEMORY_FEYNMAN = '## Release 0.4\n- Breaking config rename goes first in the notes.\n- Ship date agreed: Thursday, after the docs review.'
 
 /** In-memory fake that changes over time, so polling, sorting and transitions are visible without a host (development builds). */
 export function fakeSource(): CoordinatorSource {
@@ -143,11 +157,11 @@ export function fakeSource(): CoordinatorSource {
   const coordinators: CoordinatorInfo[] = [
     { id: B, sessionId: 'fake-coordinator-7f3e', name: 'Feynman', title: 'Release 0.4', home: `${BASE}/coordinator-feynman`,
       folder: `${HOME}/Library/Mobile Documents/coordinator-2`, folderProblem: 'the folder is inside ~/Library, which is refused',
-      createdAt: now - 70 * min, updatedAt: now - 6 * min },
+      memory: FAKE_MEMORY_FEYNMAN, memoryRevision: 3, memoryBy: { by: 'coordinator', at: now - 38 * min }, createdAt: now - 70 * min, updatedAt: now - 6 * min },
     { id: A, sessionId: realCoordinator ?? 'fake-coordinator-1a2b', name: 'Noether', title: 'Noether', home: `${BASE}/coordinator-noether`, folder: `${BASE}/coordinator-noether`,
       model: { ok: false, reason: 'model-unavailable', model: 'deepseek-official/deepseek-v4.1-flash' },
       executorPrompt: 'Write tests before you change code.\nKeep commits small and explain each one in a sentence.\nAsk the coordinator before adding a dependency.',
-      createdAt: now - 26 * 60 * min, updatedAt: now - 1 * min },
+      memory: FAKE_MEMORY_NOETHER, memoryRevision: 7, memoryBy: { by: 'user', at: now - 3 * 60 * min }, createdAt: now - 26 * 60 * min, updatedAt: now - 1 * min },
   ]
   let lastCoordinatorId: string | undefined = A
   const threads: ThreadInfo[] = [
@@ -241,6 +255,8 @@ export function fakeSource(): CoordinatorSource {
     at => { const t = threads.find(x => x.id === 't-e9d3'); if (t) Object.assign(t, { status: 'running', statusDetail: 'Scanning 212 files', updatedAt: at }) },
     at => { const t = threads.find(x => x.id === 't-5d10'); if (t) Object.assign(t, { status: 'needs-user', statusDetail: 'Coordinator: two rules conflict with the style guide; pick one.', updatedAt: at }) },
     at => { const t = threads.find(x => x.id === 't-81c2'); if (t) Object.assign(t, { status: 'done', statusDetail: undefined, lastReport: { kind: 'result', text: 'No regression: new tokenizer within 1% of main on all 8 shapes.', at }, updatedAt: at }) },
+    // An Executor Session updates the memory (its memory tool), so the page shows a host change to the Memory row and who made it.
+    at => { const c = coordinators.find(x => x.id === A); if (c?.memory !== undefined && c.memoryOff !== true) Object.assign(c, { memory: `${c.memory}\n- tokenizer: new version is within 1% of main; no need to re-run.`, memoryRevision: (c.memoryRevision ?? 0) + 1, memoryBy: { by: 'executor', executorId: 't-81c2', executorTitle: 'Benchmark the new tokenizer against main', at }, memoryExecutors: [{ id: 't-81c2', title: 'Benchmark the new tokenizer against main' }], updatedAt: at }) },
   ]
   let polls = 0
   const tick = () => {
@@ -334,6 +350,37 @@ export function fakeSource(): CoordinatorSource {
       if (clean.length > PROMPT_LIMIT) throw new SourceError(`the executor prompt is longer than ${PROMPT_LIMIT} characters`, false)
       if (clean.trim() === '') delete record.executorPrompt
       else record.executorPrompt = clean
+      record.updatedAt = Date.now()
+      revision += 1
+      return { ...record }
+    },
+    async setCoordinatorMemory(coordinatorId, text, based, signal) {
+      await delay(signal)
+      const record = find(coordinatorId)
+      // Like the host: a text based on another revision than the current one is not saved.
+      if (based !== (record.memoryRevision ?? 0)) return { saved: false, coordinator: { ...record } }
+      const clean = text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trimEnd()
+      if (clean.length > MEMORY_LIMIT) throw new SourceError(`the memory may have at most ${MEMORY_LIMIT} characters (it has ${clean.length})`, false)
+      // Like the host: the owner's save also clears the mark of executor changes, with or without a new text.
+      const changed = clean !== (record.memory ?? '')
+      if (changed || record.memoryExecutors !== undefined) {
+        if (changed) {
+          if (clean === '') delete record.memory
+          else record.memory = clean
+          record.memoryRevision = (record.memoryRevision ?? 0) + 1
+          record.memoryBy = { by: 'user', at: Date.now() }
+        }
+        delete record.memoryExecutors
+        record.updatedAt = Date.now()
+        revision += 1
+      }
+      return { saved: true, coordinator: { ...record } }
+    },
+    async setCoordinatorMemoryEnabled(coordinatorId, enabled, signal) {
+      await delay(signal)
+      const record = find(coordinatorId)
+      if (enabled) delete record.memoryOff
+      else record.memoryOff = true
       record.updatedAt = Date.now()
       revision += 1
       return { ...record }

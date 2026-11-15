@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  archivedThreadsOf, chatOf, countsOf, isLoading, isWorking, monogramOf, nameOf, nameProblem, orphanThreads, pickCoordinator, promptLength, roleOf, sentence, threadsOf, toneOf, TONES,
+  archivedThreadsOf, chatOf, countsOf, isLoading, isWorking, memoryRowMerge, memoryRowSync, memoryRowView, monogramOf, nameOf, nameProblem, orphanThreads, pickCoordinator, promptLength, roleOf, sentence, threadsOf,
+  toneOf, TONES,
 } from '../src/client/store.ts'
 import type { CoordinatorInfo, CoordinatorState, ThreadInfo } from '../src/types.ts'
 
@@ -141,4 +142,167 @@ test('no "Deny" and no "computer that runs" left in the copy', async () => {
   assert.ok(!Object.values(en).some(v => /\bDeny\b/.test(v)))
   assert.ok(!Object.values(en).some(v => v.includes('computer that runs')))
   assert.ok(!Object.values(zh).some(v => v.includes('那台电脑')))
+})
+
+test('the client limits match the host: Executor prompt and memory', async () => {
+  const { EXECUTOR_PROMPT_MAX, MEMORY_MAX: HOST_MEMORY_MAX } = await import('../src/host/ids.ts')
+  const { PROMPT_MAX, MEMORY_MAX } = await import('../src/client/store.ts')
+  assert.equal(PROMPT_MAX, EXECUTOR_PROMPT_MAX)
+  assert.equal(MEMORY_MAX, HOST_MEMORY_MAX)
+})
+
+test('the fake source keeps a memory per coordinator: shown, replaced, cleared, refused when too long or based on a stale revision, switched off', async () => {
+  const { fakeSource } = await import('../src/client/source.ts')
+  const source = fakeSource()
+  const first = (await source.getState()).coordinators.find(c => c.memory !== undefined)
+  assert.ok(first, 'a fake coordinator has a memory for the dev build')
+  assert.match(first.memory!, /^## /)
+  assert.ok(first.memoryRevision! > 0 && first.memoryBy !== undefined, 'with a revision and a last writer')
+  const saved = await source.setCoordinatorMemory(first.id, '- One thing.\r\n', first.memoryRevision!)
+  assert.deepEqual([saved.saved, saved.coordinator.memory, saved.coordinator.memoryRevision, saved.coordinator.memoryBy?.by], [true, '- One thing.', first.memoryRevision! + 1, 'user'])
+  assert.equal((await source.getState()).coordinators.find(c => c.id === first.id)?.memory, '- One thing.')
+  // Like the host: a draft based on the earlier revision is not saved, and the current memory comes back.
+  const stale = await source.setCoordinatorMemory(first.id, '- Too late.', first.memoryRevision!)
+  assert.deepEqual([stale.saved, stale.coordinator.memory, stale.coordinator.memoryRevision], [false, '- One thing.', first.memoryRevision! + 1])
+  assert.equal((await source.setCoordinatorMemory(first.id, '', stale.coordinator.memoryRevision!)).coordinator.memory, undefined)
+  await assert.rejects(source.setCoordinatorMemory(first.id, 'x'.repeat(6001), first.memoryRevision! + 2), /at most 6000 characters/)
+  assert.equal((await source.setCoordinatorMemoryEnabled(first.id, false)).memoryOff, true)
+  assert.equal((await source.getState()).coordinators.find(c => c.id === first.id)?.memoryOff, true)
+  assert.equal((await source.setCoordinatorMemoryEnabled(first.id, true)).memoryOff, undefined)
+})
+
+test('the Memory row has its strings in both languages', async () => {
+  const { en, zh } = await import('../src/client/locales.ts')
+  for (const key of Object.keys(en).filter(k => k.startsWith('memory.'))) assert.ok(zh[key as keyof typeof zh], key)
+})
+
+test('M1: the Memory row follows the memory revision: a newer version merges, an older poll is ignored, a refused save keeps the draft', () => {
+  /** A row as the component holds it, driven like its effect and its save. */
+  let row = { base: 'A', baseRevision: 1, draft: 'A', changed: false }
+  const poll = (text: string, revision: number) => { row = memoryRowSync(row, { text, revision }) ?? row }
+  /** A save the host accepted: the row takes the host's cleaned text and the new revision. */
+  const saved = (text: string, revision: number) => { row = { draft: text, base: text, baseRevision: revision, changed: false } }
+  // The user adds a line and saves; the poll still brings the old version once, then the saved one.
+  row.draft = 'B'
+  saved('B', 2)
+  poll('A', 1)
+  assert.deepEqual(row, { base: 'B', baseRevision: 2, draft: 'B', changed: false }, 'the old text does not come back into the field')
+  poll('B', 2)
+  assert.deepEqual(row, { base: 'B', baseRevision: 2, draft: 'B', changed: false })
+  // The coordinator restores exactly the earlier text: it is a new revision, so the row follows it.
+  poll('A', 3)
+  assert.deepEqual(row, { base: 'A', baseRevision: 3, draft: 'A', changed: false })
+  // With unsaved edits the draft stays and the row says the memory changed underneath; it is now based on the new
+  // version, so a save replaces that version knowingly.
+  row.draft = 'A plus mine'
+  poll('C', 4)
+  assert.deepEqual(row, { base: 'C', baseRevision: 4, draft: 'A plus mine', changed: true })
+  // A draft equal to the new host text is simply in sync.
+  row.draft = 'D'
+  poll('D', 5)
+  assert.deepEqual(row, { base: 'D', baseRevision: 5, draft: 'D', changed: false })
+  // The host cleaned the saved text (it differs from the draft): the field takes the host's version from the result.
+  row.draft = 'E  '
+  saved('E', 6)
+  poll('D', 5)
+  assert.deepEqual(row, { base: 'E', baseRevision: 6, draft: 'E', changed: false })
+  // A refused save: the memory changed between the last poll and the save. The draft stays, the row says so and is
+  // based on the current version; the next save goes out with that revision.
+  row.draft = 'E and my line'
+  row = memoryRowMerge(row, { text: 'F', revision: 7 })
+  assert.deepEqual(row, { base: 'F', baseRevision: 7, draft: 'E and my line', changed: true })
+  poll('F', 7)
+  assert.deepEqual(row, { base: 'F', baseRevision: 7, draft: 'E and my line', changed: true }, 'the poll of the same version changes nothing')
+  // A refusal whose current text equals the draft leaves nothing to decide.
+  assert.deepEqual(memoryRowMerge({ draft: 'G', base: 'F' }, { text: 'G', revision: 8 }), { base: 'G', baseRevision: 8, draft: 'G', changed: false })
+  // A refusal is taken as it comes, also with a lower revision than the row had (a state file put back): the row recovers.
+  assert.deepEqual(memoryRowMerge({ draft: 'mine', base: 'F' }, { text: 'old', revision: 2 }), { base: 'old', baseRevision: 2, draft: 'mine', changed: true })
+  // Pure: nothing to do for the revision the row is based on, or an older one.
+  assert.equal(memoryRowSync({ base: 'x', baseRevision: 3, draft: 'y', changed: false }, { text: 'z', revision: 3 }), undefined)
+  assert.equal(memoryRowSync({ base: 'x', baseRevision: 3, draft: 'y', changed: false }, { text: 'z', revision: 2 }), undefined)
+})
+
+test('Review L5: after the host service started again the Memory row takes its version, also with a lower or equal revision', () => {
+  const row = { base: 'new', baseRevision: 9, draft: 'new', changed: false, epoch: 'a' }
+  // The same service: a lower or equal revision is an older poll, as before.
+  assert.equal(memoryRowSync(row, { text: 'old', revision: 4, epoch: 'a' }), undefined)
+  assert.equal(memoryRowSync(row, { text: 'other', revision: 9, epoch: 'a' }), undefined)
+  assert.deepEqual(memoryRowSync(row, { text: 'newer', revision: 10, epoch: 'a' }), { base: 'newer', baseRevision: 10, draft: 'newer', changed: false, epoch: 'a' })
+  // Another service (the state file was put back from a backup): the row follows, whatever the revision.
+  assert.deepEqual(memoryRowSync(row, { text: 'old', revision: 4, epoch: 'b' }), { base: 'old', baseRevision: 4, draft: 'old', changed: false, epoch: 'b' })
+  // An equal revision with another text (a hand edit): followed too, so the next save does not replace it unseen.
+  assert.deepEqual(memoryRowSync(row, { text: 'edited', revision: 9, epoch: 'b' }), { base: 'edited', baseRevision: 9, draft: 'edited', changed: false, epoch: 'b' })
+  // An unsaved draft stays and the row says that the memory changed underneath.
+  assert.deepEqual(memoryRowSync({ ...row, draft: 'new plus mine' }, { text: 'old', revision: 4, epoch: 'b' }), { base: 'old', baseRevision: 4, draft: 'new plus mine', changed: true, epoch: 'b' })
+  // The same version from the new service: only the epoch moves, an unsaved draft is not marked.
+  assert.deepEqual(memoryRowSync({ ...row, draft: 'new plus mine' }, { text: 'new', revision: 9, epoch: 'b' }), { base: 'new', baseRevision: 9, draft: 'new plus mine', changed: false, epoch: 'b' })
+  // Once on the new service, its revisions order the versions again.
+  assert.equal(memoryRowSync({ base: 'old', baseRevision: 4, draft: 'old', changed: false, epoch: 'b' }, { text: 'older', revision: 3, epoch: 'b' }), undefined)
+  // A host that names no epoch (an older one) behaves as before.
+  assert.equal(memoryRowSync(row, { text: 'old', revision: 4 }), undefined)
+  assert.deepEqual(memoryRowSync({ base: 'x', baseRevision: 1, draft: 'x', changed: false }, { text: 'y', revision: 2 }), { base: 'y', baseRevision: 2, draft: 'y', changed: false })
+})
+
+test('the Memory row follows the page on its own: a change by the coordinator or an Executor Session asks nothing of the user', () => {
+  /** A row as the component holds it, with the number of Executor Sessions the host names as having changed the page. */
+  let row = { base: 'A', baseRevision: 1, draft: 'A', changed: false }
+  const poll = (text: string, revision: number) => { row = memoryRowSync(row, { text, revision }) ?? row }
+  const view = (executors = 0, facts: { busy?: boolean; archived?: boolean } = {}) => memoryRowView(row, { executors, ...facts })
+  const nothing = { dirty: false, over: false, conflict: false, canSave: false, canRevert: false, canReview: false }
+  assert.deepEqual(view(), nothing, 'a page in sync offers nothing')
+
+  // The coordinator rewrites its memory: the field shows the new text, and nothing is to save or to revert.
+  poll('A\n- the coordinator added this', 2)
+  assert.equal(row.draft, 'A\n- the coordinator added this')
+  assert.deepEqual(view(), nothing)
+
+  // An Executor Session changes the page: the text follows the same way. The mark is information, Save stays off, and
+  // the one optional action is to mark the page as reviewed.
+  poll('A\n- an executor added this', 3)
+  assert.equal(row.draft, 'A\n- an executor added this')
+  assert.deepEqual(view(1), { ...nothing, canReview: true })
+  // Further changes keep following, also while the mark is there.
+  poll('B', 4)
+  assert.equal(row.draft, 'B')
+  assert.deepEqual(view(2), { ...nothing, canReview: true })
+  // Not while a save or a review runs, and not on an archived coordinator.
+  assert.deepEqual(view(2, { busy: true }), nothing)
+  assert.deepEqual(view(2, { archived: true }), nothing)
+
+  // The user's own unsaved edit: Save and Revert are theirs. The review action steps back, since Save clears the mark too.
+  row.draft = 'B plus mine'
+  assert.deepEqual(view(2), { dirty: true, over: false, conflict: false, canSave: true, canRevert: true, canReview: false })
+  // Only now can a change underneath be a conflict: the draft stays and the user decides.
+  poll('C', 5)
+  assert.equal(row.draft, 'B plus mine')
+  assert.deepEqual(view(2), { dirty: true, over: false, conflict: true, canSave: true, canRevert: true, canReview: false })
+  // Reverting takes the page's version; the row follows on its own again.
+  row = { ...row, draft: row.base, changed: false }
+  assert.deepEqual(view(), nothing)
+  poll('D', 6)
+  assert.equal(row.draft, 'D')
+
+  // Marking as reviewed sends the page the row is based on with its revision. Accepted, the host returns the same
+  // text and revision and the row stays as it is; refused (the page changed just now), the row takes the new version.
+  assert.deepEqual(memoryRowMerge(row, { text: 'D', revision: 6 }), { base: 'D', baseRevision: 6, draft: 'D', changed: false })
+  assert.deepEqual(memoryRowMerge(row, { text: 'E', revision: 7 }), { base: 'E', baseRevision: 7, draft: 'E', changed: false })
+
+  // Q8: the user types while "Mark as reviewed" is under way. The host accepts and returns the text the draft is
+  // based on (same or newer revision): the edit is an ordinary unsaved one, with no "changed meanwhile" line.
+  for (const revision of [6, 7]) {
+    const typed = memoryRowMerge({ ...row, draft: 'D and a line typed meanwhile' }, { text: 'D', revision })
+    assert.deepEqual(typed, { base: 'D', baseRevision: revision, draft: 'D and a line typed meanwhile', changed: false })
+    assert.deepEqual(memoryRowView(typed, { executors: 0 }), { dirty: true, over: false, conflict: false, canSave: true, canRevert: true, canReview: false })
+  }
+  // The same through a poll: a new revision of the same text takes nothing from under the draft.
+  assert.deepEqual(memoryRowSync({ ...row, draft: 'D plus mine' }, { text: 'D', revision: 9 }), { base: 'D', baseRevision: 9, draft: 'D plus mine', changed: false })
+  // A review refused because the page changed just now is a real change underneath the typed text.
+  assert.deepEqual(memoryRowMerge({ ...row, draft: 'D and a line typed meanwhile' }, { text: 'E', revision: 7 }), { base: 'E', baseRevision: 7, draft: 'D and a line typed meanwhile', changed: true })
+  // A conflict the row already shows stays when only the revision moves afterwards: the user has not decided yet.
+  assert.deepEqual(memoryRowMerge({ draft: 'mine', base: 'E', changed: true }, { text: 'E', revision: 8 }), { base: 'E', baseRevision: 8, draft: 'mine', changed: true })
+
+  // A draft above the limit can be reverted but not saved; a stale "changed" flag without an edit is no conflict.
+  row.draft = 'x'.repeat(6001)
+  assert.deepEqual(view(), { dirty: true, over: true, conflict: false, canSave: false, canRevert: true, canReview: false })
+  assert.deepEqual(memoryRowView({ draft: 'D', base: 'D', changed: true }, { executors: 0 }), nothing)
 })

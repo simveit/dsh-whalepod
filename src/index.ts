@@ -11,7 +11,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { principalOf, Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult,
-  DeleteCoordinatorRequest, DeleteCoordinatorResult, HostProblem, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetExecutorPromptRequest, ThreadInfo, ThreadPermissionState,
+  DeleteCoordinatorRequest, DeleteCoordinatorResult, HostProblem, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, ThreadInfo, ThreadPermissionState,
 } from './types.ts'
 import { HOST_INJECT, type HostContext } from './host/dsh.ts'
 import { type CoordinatorConfig } from './host/ids.ts'
@@ -219,6 +219,26 @@ export default class CoordinatorService extends TypertRemoteService {
     signal.throwIfAborted()
     requireOwner(this.ctx)
     return this.service().setExecutorPrompt(request ?? {})
+  }
+
+  /**
+   * Replace a coordinator's memory (one page of markdown notes, max 6000 characters); empty text clears it. The request
+   * names the memory revision the text is based on; when the memory changed since, nothing is saved (`saved: false`)
+   * and the result carries the current text and revision. Owner only.
+   */
+  @Remote
+  async setCoordinatorMemory(request: SetCoordinatorMemoryRequest, signal: AbortSignal): Promise<SetCoordinatorMemoryResult> {
+    signal.throwIfAborted()
+    requireOwner(this.ctx)
+    return this.service().setCoordinatorMemory(request ?? {})
+  }
+
+  /** Switch a coordinator's memory on or off; off keeps the text but nobody is shown it or may change it by tool. Owner only. */
+  @Remote
+  async setCoordinatorMemoryEnabled(request: SetCoordinatorMemoryEnabledRequest, signal: AbortSignal): Promise<CoordinatorInfo> {
+    signal.throwIfAborted()
+    requireOwner(this.ctx)
+    return this.service().setCoordinatorMemoryEnabled(request ?? {})
   }
 
   /** Rename a coordinator (its chat title and sidebar group follow; folders are never renamed). Owner only. */

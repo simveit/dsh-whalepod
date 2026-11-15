@@ -41,6 +41,8 @@ export const CONFIG_FIELDS: readonly ConfigField[] = [
   { key: 'peerWindowMs', kind: 'duration', min: 1000, volatile: true, description: 'Window of the peer message limits, in milliseconds.' },
   { key: 'noticeDebounceMs', kind: 'duration', min: 0, volatile: true, description: 'Quiet time before a batch of notices goes to the coordinator, in milliseconds.' },
   { key: 'noticeMaxDelayMs', kind: 'duration', min: 0, volatile: true, description: 'Longest a notice waits for its batch, in milliseconds.' },
+  { key: 'checkLaterMinMinutes', kind: 'count', min: 1, integer: true, volatile: true, description: 'Shortest gap, in minutes, a coordinator may ask for when it schedules a look-in at a working Executor Session; at most 240, a larger value counts as 240.' },
+  { key: 'checkLaterMaxPerExecutor', kind: 'count', min: 1, integer: true, volatile: true, description: 'Look-ins one Executor Session may get until the user writes again, in the coordinator\'s chat or in the executor; past it the coordinator relies on notices.' },
   { key: 'threadPermission', kind: 'choice', choices: ['auto', 'ask'], volatile: true, description: 'How new Executor Sessions run until the user picks on the Coordinator page: auto (Auto review) or ask (Ask me, workspace-write).' },
   { key: 'briefAs', kind: 'choice', choices: ['user', 'notice'], volatile: true, description: 'user: an Assignment counts as the user\'s prompt when the user opened the coordinator\'s turn; notice: always an agent message.' },
   { key: 'coordinatorBase', kind: 'path', volatile: true, description: 'Folder where New coordinator makes each coordinator\'s own folder; empty: next to dsh\'s default workspace.' },

@@ -9,6 +9,15 @@ export declare const UNTRUSTED_HEADER: string;
  */
 export declare const INVISIBLE: RegExp;
 /**
+ * What follows the name of a tag look-alike in the folded text, as a lookahead, so `Map<ExecutorPrompt, X>`,
+ * `<thread.dataLength` or `a < executor prompt of` stay as written. A real tag goes on with `-` and its suffix (a separator that white space follows is not one, so the full stop after `a < thread data.` stays), with
+ * `>` or `/>` (also as the entity `&gt;`), with white space and an attribute (`from="t-1"`), or it ends the line or
+ * the text; a name followed by the next `<` counts as well. The fold reads `_`,
+ * `.` and `:` as `-`, so `<executor.prompt_len` cannot be told from a tag with a suffix and is still replaced, and so
+ * is a generic type that closes right after the name (`List<ThreadData>`).
+ */
+export declare const TAG_END: string;
+/**
  * Remove escape sequences, control characters and invisible characters. Keeps newlines and tabs.
  * @param text - untrusted text.
  * @returns the cleaned text.
@@ -21,10 +30,22 @@ export declare function stripControls(text: string): string;
  */
 export declare function capLength(text: string, max: number): string;
 /**
+ * Replace every look-alike of a tag in `text`, found on a folded copy, and leave the rest of the text as it is. The
+ * copy is folded one code point at a time: compatibility forms become ASCII (NFKC), confusable angles, slashes,
+ * separators and letters become the ASCII they impersonate (`CONFUSABLE`: `_`, `.`, `:` and the odd hyphens all read
+ * as `-`, a backslash as `/`), everything is lower-cased, and entities for `<` count as `<`. `pattern` is matched on
+ * that copy, so it is written in lower-case ASCII with `-` for a separator; each match is replaced in `text` over
+ * the characters it came from.
+ * @param pattern - a global regular expression for the folded copy.
+ * @param neverLonger - use a shorter marker where the look-alike is shorter than the usual one, so the result is
+ * never longer than `text` (for text with a hard length cap).
+ */
+export declare function neutraliseLookalikes(text: string, pattern: RegExp, neverLonger?: boolean): string;
+/**
  * Replace every delimiter look-alike in a payload with a harmless marker. The text is NFKC-normalised (full-width
  * and other compatibility forms become ASCII), entities for `<` are decoded, and confusable letters, angles, slashes
- * and separators are folded before matching, so `＜/thread-data＞`, `‹/thrеad·data>` or `&lt;/thread-data>` are
- * caught as well.
+ * and separators are folded before matching (`neutraliseLookalikes`), so `＜/thread-data＞`, `‹/thrеad·data>` or
+ * `&lt;/thread-data>` are caught as well.
  */
 export declare function neutraliseDelimiters(text: string): string;
 /**

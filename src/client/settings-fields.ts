@@ -37,6 +37,8 @@ export const SETTINGS_SECTIONS: readonly { id: string; fields: readonly Settings
     fields: [
       { key: 'noticeDebounceMs', kind: 'duration', min: 0 },
       { key: 'noticeMaxDelayMs', kind: 'duration', min: 0 },
+      { key: 'checkLaterMinMinutes', kind: 'count', min: 1, integer: true },
+      { key: 'checkLaterMaxPerExecutor', kind: 'count', min: 1, integer: true },
     ],
   },
   {

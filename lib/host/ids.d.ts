@@ -31,6 +31,29 @@ export declare const EXECUTOR_PROMPT_MAX = 4000;
  * except newline and tab are removed, trailing whitespace is trimmed.
  */
 export declare function cleanExecutorPrompt(raw: string): string;
+/** Longest coordinator memory, in characters. A safety bound on what a snapshot or a read costs; the prompts ask for a short page. */
+export declare const MEMORY_MAX = 6000;
+/**
+ * Longest raw text the memory cleaner is given, in characters. Cleaning can shorten a text (control and invisible
+ * characters, trailing white space), so the raw text may be longer than `MEMORY_MAX`; past this bound a write is
+ * refused before any cleaning, so the cost of a refused call does not grow with what a caller sends (`updateMemory`, `setCoordinatorMemory`, `storedMemory`).
+ */
+export declare const MEMORY_RAW_MAX: number;
+/**
+ * A coordinator's memory as stored and shown: cleaned like the Executor prompt (line breaks folded, control and
+ * invisible characters removed, trailing white space trimmed), so neither a model nor a hand-edited state file can
+ * hide text in it that the user does not see on the page. Tag look-alikes (`MEMORY_TAG_LIKE`) become `[removed tag]`
+ * (`[tag]` where the look-alike is shorter than that), after the invisible characters are gone, so none can hide a
+ * tag from the match. The look-alikes are found the way `fence.ts` finds them in Executor Session text: full-width
+ * and other compatibility forms, `&lt;` entities, confusable angles, slashes, hyphens and letters all count. Only the
+ * look-alikes change; the rest of the text stays as written (it is not normalised). The result is never longer than
+ * the text, so cleaning cannot push a text over `MEMORY_MAX`, and cleaning it again changes nothing.
+ */
+export declare function cleanMemory(raw: string): string;
+/** Whether a string has the shape of an Executor Session's row id as this plugin mints it (`newThreadId`). */
+export declare function isExecutorId(value: unknown): value is string;
+/** Longest gap of a look-in (`executor_check_later`), in minutes; `checkLaterMinMinutes` cannot exceed it. */
+export declare const LOOK_IN_MAX_MINUTES = 240;
 /** Longest coordinator name, in characters. */
 export declare const COORDINATOR_NAME_MAX = 40;
 /**
@@ -127,6 +150,10 @@ export interface CoordinatorConfig {
     noticeDebounceMs: number;
     /** Longest a notice waits for its batch. */
     noticeMaxDelayMs: number;
+    /** Shortest gap a coordinator may ask for with `executor_check_later`, in minutes (1 to 240); shorter requests are raised to it. */
+    checkLaterMinMinutes: number;
+    /** Look-ins one executor may get until the user writes again (in the coordinator's chat or in the executor); past it the tool refuses. */
+    checkLaterMaxPerExecutor: number;
     /**
      * How a thread's first brief is recorded. `user`: as a user prompt (visible as a chat bubble, and auto review
      * treats it as the task), but only when the user opened the coordinator turn that started the thread; otherwise

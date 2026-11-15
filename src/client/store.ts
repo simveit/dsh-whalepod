@@ -261,6 +261,8 @@ export function toneOf(name: string): Tone {
 
 /** The host's limit for a coordinator's executor prompt. */
 export const PROMPT_MAX = 4000
+/** The host's limit for a coordinator's memory (`MEMORY_MAX` in src/host/ids.ts); counted like the executor prompt. */
+export const MEMORY_MAX = 6000
 /** The host's limit for a coordinator name. */
 export const NAME_MAX = 40
 
@@ -277,6 +279,75 @@ export function nameProblem(name: string, coordinatorId: string, coordinators: r
   const lower = trimmed.toLocaleLowerCase()
   if (coordinators.some(c => c.id !== coordinatorId && c.archived !== true && typeof c.name === 'string' && c.name.trim().toLocaleLowerCase() === lower)) return 'rename.taken'
   return undefined
+}
+
+/** What the Memory row holds: the user's text, and the host text and memory revision that text is based on. */
+export interface MemoryRow {
+  draft: string
+  base: string
+  baseRevision: number
+  /** The host text changed under unsaved edits; the row says so until the user saves or reverts. */
+  changed: boolean
+  /** The host service (`CoordinatorState.epoch`) the base came from; revisions order versions only within one. */
+  epoch?: string
+}
+
+/**
+ * The Memory row after it was shown a host version of the memory that differs from the one it is based on: a draft
+ * without unsaved changes (or one that already equals the new text) follows the host; a draft with unsaved changes
+ * stays, based on the new version. It is marked as changed underneath only when the host's text differs from the
+ * text the draft was based on: a new revision of the same text (the row's own "Mark as reviewed" while the user
+ * went on typing, or a save of the unchanged page elsewhere) took nothing from under the draft. A mark the row
+ * already carries stays until the user saves or reverts. Either way the row is based on the host's version
+ * afterwards, so the user's next Save replaces that version knowingly. Pure.
+ */
+export function memoryRowMerge(row: Pick<MemoryRow, 'draft' | 'base'> & { changed?: boolean }, host: { text: string; revision: number }): MemoryRow {
+  const clean = row.draft === row.base || row.draft === host.text
+  return { draft: clean ? host.text : row.draft, base: host.text, baseRevision: host.revision, changed: !clean && (host.text !== row.base || row.changed === true) }
+}
+
+/**
+ * What the Memory row does with the memory a poll brought. Pure, so the row's rules are tested without a browser.
+ * The memory revision orders the versions: the revision the row is based on means nothing changed, a lower one is a
+ * poll from before the row's own save (it must not bring the old text back into the field), and a higher one is a
+ * new version (`memoryRowMerge`).
+ * That order holds for one host service. When the host's `epoch` differs from the row's, the service was started
+ * again and may have loaded another state file (one put back from a backup, or edited by hand), so the revision may
+ * have gone backwards or name another text: the row then takes the host's version whatever its revision, by the
+ * same merge.
+ * @returns the new row, or undefined when it stays as it is.
+ */
+export function memoryRowSync(row: MemoryRow, host: { text: string; revision: number; epoch?: string }): MemoryRow | undefined {
+  const epoch = host.epoch ?? row.epoch
+  const based = (next: Omit<MemoryRow, 'epoch'>): MemoryRow => ({ draft: next.draft, base: next.base, baseRevision: next.baseRevision, changed: next.changed, ...(epoch === undefined ? {} : { epoch }) })
+  if (epoch !== row.epoch) {
+    // The same version from a new service (or the first poll that names one): only the epoch is new.
+    return based(host.text === row.base && host.revision === row.baseRevision ? row : memoryRowMerge(row, host))
+  }
+  return host.revision > row.baseRevision ? based(memoryRowMerge(row, host)) : undefined
+}
+
+/**
+ * What the Memory row shows and offers for the state it is in. Pure, so the row's rules are tested without a browser.
+ * The page follows the host on its own (`memoryRowSync`), so a change by the coordinator or by an Executor Session
+ * asks nothing of the user: Save and Revert belong to the user's own unsaved edits, and only such edits can be in
+ * conflict with a change underneath. While Executor Sessions changed the page since the owner last saved it
+ * (`executors`), the row says so as information and offers one optional action, marking the page as reviewed, which
+ * saves the unchanged text and so clears the mark on the host. It is offered only while the field shows the host's
+ * text; with unsaved edits, Save does the same.
+ */
+export function memoryRowView(row: Pick<MemoryRow, 'draft' | 'base' | 'changed'>, facts: { executors: number; busy?: boolean; archived?: boolean }): {
+  dirty: boolean; over: boolean; conflict: boolean; canSave: boolean; canRevert: boolean; canReview: boolean
+} {
+  const dirty = row.draft !== row.base
+  const over = promptLength(row.draft) > MEMORY_MAX
+  const idle = facts.busy !== true && facts.archived !== true
+  return {
+    dirty, over, conflict: dirty && row.changed,
+    canSave: idle && dirty && !over,
+    canRevert: idle && dirty,
+    canReview: idle && !dirty && facts.executors > 0,
+  }
 }
 
 /** Characters of an executor prompt as the host's limit counts them (UTF-16 units of the text, as `String.length`). */

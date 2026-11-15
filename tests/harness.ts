@@ -1,5 +1,5 @@
 /**
- * A fake dsh host context for ThreadService tests: sessions, agents, workspaces, tools, prompt sections and events,
+ * A fake dsh host context for ThreadService tests: sessions, agents, workspaces, tools, prompt sections, contexts and events,
  * in memory. Only the members the plugin declares in src/host/dsh.ts are implemented. Folders are real, inside
  * tests/_scratch/<name>, so the folder guard and mkdir run against the disk without leaving the workspace.
  */
@@ -159,6 +159,8 @@ export class FakeHost {
   readonly archived: string[] = []
   readonly tools: { def: ToolDefinition; when: (c: { agent: { id: string } }) => boolean }[] = []
   readonly sections: { text: (c: { agent?: { id: string } }) => string }[] = []
+  /** Runtime contexts (`ctx.systemPrompt.context`), as registered: dsh sends them as a snapshot after the history. */
+  readonly contexts: { name: string; order: number; required?: boolean; interpolate?: boolean; text: (c: { agent?: { id: string } }) => string }[] = []
   readonly services = new Map<string, unknown>()
   readonly presets = new Map<string, string>()
   /** Set to make the next call of a controller method throw. */
@@ -261,7 +263,10 @@ export class FakeHost {
           ? [...host.tools.map(t => t.def.name), ...host.globalTools]
           : scope.visibleTools()).map(name => ({ name })),
       },
-      systemPrompt: { section: (section: { text: (c: { agent?: { id: string } }) => string }) => { host.sections.push(section); return () => {} } },
+      systemPrompt: {
+        section: (section: { text: (c: { agent?: { id: string } }) => string }) => { host.sections.push(section); return () => {} },
+        context: (context: FakeHost['contexts'][number]) => { host.contexts.push(context); return () => {} },
+      },
       workspaceRegistry: {
         create: async (path: string, title?: string) => {
           const real = realpathSync.native(path)
@@ -508,6 +513,7 @@ export class FakeHost {
   reset(): void {
     this.tools.length = 0
     this.sections.length = 0
+    this.contexts.length = 0
     this.listeners.clear()
     this.guards.length = 0
   }

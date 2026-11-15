@@ -40,3 +40,21 @@ export interface Page {
 }
 /** Entries after `cursor` (an event seq), up to `maxChars` characters of rendered text (at least one entry). */
 export declare function page(entries: readonly Entry[], cursor: number | undefined, maxChars: number): Page;
+/** One entry of dsh's todo list (`todo/write` in dsh-tool-todo): a short line and a three-state status. */
+export interface TodoItem {
+    content: string;
+    status: 'pending' | 'in_progress' | 'completed';
+}
+/**
+ * The Lead's current todo list: the list of the latest `todo/write` event in its log (each event replaces the whole
+ * list), or undefined when it never wrote one. Malformed entries are skipped.
+ */
+export declare function latestTodos(events: readonly {
+    type: string;
+    data: unknown;
+}[]): TodoItem[] | undefined;
+/** Items a compact todo list shows, and the length of each item's text. */
+export declare const TODO_ITEMS_MAX = 15;
+export declare const TODO_ITEM_MAX = 100;
+/** A todo list as compact lines: a status mark and the item clipped, at most 15 items, then "+N more". Executor text. */
+export declare function todoLines(items: readonly TodoItem[]): string;

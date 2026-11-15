@@ -175,7 +175,7 @@ test('tool gating: members and nested members get no thread or coordinator tools
   const m = r.host.addMember(lead, 'a')
   const nested = r.host.addMember(m, 'b')
   memberTurn(r, nested, true)
-  assert.deepEqual(r.host.toolsFor(lead.id).sort(), ['coordinator_report', 'executor_peers', 'executor_send'])
+  assert.deepEqual(r.host.toolsFor(lead.id).sort(), ['coordinator_report', 'executor_peers', 'executor_send', 'memory_read', 'memory_update'])
   assert.deepEqual(r.host.toolsFor(m.id), [])
   assert.deepEqual(r.host.toolsFor(nested.id), [])
   assert.equal(r.host.sections.map(s => s.text({ agent: m })).join(''), '')

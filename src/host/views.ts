@@ -86,9 +86,13 @@ export interface ThreadSummaryFacts {
   briefNotYetDelivered: boolean
   /** The lead's subagents and team members: name, task label (thread text) and state. */
   team?: readonly { name: string; label?: string; state: string }[]
+  /** The Lead's current todo list as compact lines (history.ts `todoLines`; thread text). */
+  todos?: string
 }
 
 const TEAM_MAX = 1200
+/** Cap of the todo list: 15 items of at most 100 characters with their marks, and "+N more". */
+const TODOS_MAX = 1700
 
 /** `executor_read` summary: trusted status facts plus a data block with everything the thread wrote. */
 export function threadSummaryView(thread: ThreadInfo, facts: ThreadSummaryFacts): ToolView {
@@ -99,6 +103,7 @@ export function threadSummaryView(thread: ThreadInfo, facts: ThreadSummaryFacts)
     ...facts.approvals.map(a => ({ name: `pending approval for ${a.toolName.replace(/[^\w.-]/g, '')}${a.member === undefined ? '' : ` (teammate ${a.member.replace(/[^\w/-]/g, '').slice(0, 40)})`}`, value: a.reason ?? '(no reason given)', max: DETAIL_MAX })),
     ...facts.questions.map(q => ({ name: 'pending question to the user', value: q, max: DETAIL_MAX })),
     { name: 'last message of the lead', value: facts.lastAssistantText ?? '', max: LAST_TEXT_MAX },
+    { name: 'todo list of the lead', value: facts.todos ?? '', max: TODOS_MAX },
     ...(facts.team === undefined || facts.team.length === 0 ? [] : [{
       name: 'teammates (name: state, task)', value: facts.team.map(m => `${m.name}: ${m.state}${m.label === undefined ? '' : `, ${m.label}`}`).join('\n'), max: TEAM_MAX,
     }]),

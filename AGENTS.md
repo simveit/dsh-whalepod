@@ -57,7 +57,7 @@ Never read, write or point `DSH_HOME` at the real dsh home (`~/.dsh`). It holds 
 ## Conventions
 
 - **Keep the security invariants** listed in [docs/security.md](docs/security.md), and update that page with any security-relevant change:
-  - Output of Executor Sessions is untrusted data. It reaches a coordinator only through `src/host/fence.ts` and never counts as the user's instruction.
+  - Output of Executor Sessions is untrusted data. It reaches a coordinator only through `src/host/fence.ts`, or as the coordinator's memory page, which a Lead writes with `memory_update` and which goes through `cleanMemory` (`src/host/ids.ts`) into its own block (security.md T11a). It never counts as the user's instruction.
   - Coordinators have no shell, write, edit, network or browser tools (`COORDINATOR_NEVER` in `src/host/coordinator-tools.ts`).
   - Scoping per coordinator is enforced in the host (`src/host/scope.ts`), not by prompts. One coordinator cannot see or reach another's executors.
   - No model-callable tool changes a coordinator's folder, the allowed folders or the executor permission mode. Only the user does, on the Coordinator page or through the folder confirmation.

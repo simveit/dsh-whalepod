@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult, DeleteCoordinatorRequest, DeleteCoordinatorResult, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetExecutorPromptRequest, ThreadPermissionState } from './types.ts';
+import type { ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult, DeleteCoordinatorRequest, DeleteCoordinatorResult, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, ThreadPermissionState } from './types.ts';
 export type * from './types.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
@@ -37,6 +37,14 @@ export default class CoordinatorService extends TypertRemoteService {
      * gets. Empty text clears it. Only the owner may set it; no model tool can read or change it.
      */
     setExecutorPrompt(request: SetExecutorPromptRequest, signal: AbortSignal): Promise<CoordinatorInfo>;
+    /**
+     * Replace a coordinator's memory (one page of markdown notes, max 6000 characters); empty text clears it. The request
+     * names the memory revision the text is based on; when the memory changed since, nothing is saved (`saved: false`)
+     * and the result carries the current text and revision. Owner only.
+     */
+    setCoordinatorMemory(request: SetCoordinatorMemoryRequest, signal: AbortSignal): Promise<SetCoordinatorMemoryResult>;
+    /** Switch a coordinator's memory on or off; off keeps the text but nobody is shown it or may change it by tool. Owner only. */
+    setCoordinatorMemoryEnabled(request: SetCoordinatorMemoryEnabledRequest, signal: AbortSignal): Promise<CoordinatorInfo>;
     /** Rename a coordinator (its chat title and sidebar group follow; folders are never renamed). Owner only. */
     renameCoordinator(request: RenameCoordinatorRequest, signal: AbortSignal): Promise<CoordinatorInfo>;
     /** Archive a coordinator with its finished threads (`force` also stops working ones); optionally its sidebar Workspace. */

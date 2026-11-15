@@ -186,6 +186,12 @@ export async function apply(ctx: ClientContext): Promise<void> {
         ? new Promise<PickResult>(() => {}) : pickFolder(uiCtx),
       setCoordinatorFolder: async (coordinatorId, path) => { await store.source.setCoordinatorFolder(coordinatorId, path); store.refresh() },
       setExecutorPrompt: async (coordinatorId, text) => { await store.source.setExecutorPrompt(coordinatorId, text); store.refresh() },
+      setCoordinatorMemory: async (coordinatorId, text, revision) => {
+        const result = await store.source.setCoordinatorMemory(coordinatorId, text, revision)
+        store.refresh()
+        return result
+      },
+      setCoordinatorMemoryEnabled: async (coordinatorId, enabled) => { await store.source.setCoordinatorMemoryEnabled(coordinatorId, enabled); store.refresh() },
       renameCoordinator: async (coordinatorId, name) => { await store.source.renameCoordinator(coordinatorId, name); store.refresh() },
       archiveCoordinator: async (coordinatorId, options) => {
         const result = await store.source.archiveCoordinator(coordinatorId, options)

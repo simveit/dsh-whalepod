@@ -25,6 +25,13 @@ export interface PersistedThread {
     /** Archived threads stay in the file but leave the list and are no longer tracked. */
     archived?: boolean;
 }
+/** Who changed a coordinator's memory: the owner on the page, the coordinator, or the Lead of one of its Executor Sessions. */
+export interface MemoryWriter {
+    by: 'user' | 'coordinator' | 'executor';
+    /** For `executor`: the Executor Session's id (`t-…`). */
+    executor?: string;
+    at: number;
+}
 export interface PersistedCoordinator {
     /** `c-` + 4 hex, unique. */
     id: string;
@@ -42,6 +49,23 @@ export interface PersistedCoordinator {
     name?: string;
     /** The user's Executor prompt for this coordinator's Executor Sessions (max 4000 chars). */
     executorPrompt?: string;
+    /**
+     * The coordinator's memory, one markdown page (max 6000 chars) that it shares with the Leads of its Executor
+     * Sessions; written with `memory_update` by the coordinator or a Lead, or by the owner on the page.
+     */
+    memory?: string;
+    /** Revision of `memory`: a whole number that grows by one with every change of the text; absent means 0. */
+    memoryRevision?: number;
+    /** Who changed `memory` last, and when. */
+    memoryBy?: MemoryWriter;
+    /**
+     * The Executor Sessions (row ids, oldest first, at most `MEMORY_EXECUTORS_MAX`) that changed `memory` since the
+     * owner last saved it on the Coordinator page. Only the owner's save clears it: a later write by the coordinator
+     * changes `memoryBy` but leaves this mark, so executor text in the page stays marked until the owner has seen it.
+     */
+    memoryExecutors?: string[];
+    /** The owner switched this coordinator's memory off: nobody is shown the text or may change it by tool; it is kept. */
+    memoryOff?: boolean;
     /** Which log mark validation expects: the opening turn (or the legacy title), or the role mark of an adopted chat. */
     marks?: 'opening' | 'role';
     /** Chat Sessions this coordinator had before a Reopen; messages they sent into threads still read as the coordinator's. */
@@ -111,6 +135,29 @@ export interface UpgradeContext {
 export declare function parseState(text: string, upgrade?: UpgradeContext): PersistedState;
 /** A stored Executor prompt, cleaned and within the cap (S6: treated like every other stored field), or undefined. */
 export declare function storedPrompt(value: unknown): string | undefined;
+/** A stored coordinator memory, cleaned and within the cap like the Executor prompt, or undefined (dropped). */
+export declare function storedMemory(value: unknown): string | undefined;
+/**
+ * The highest memory revision a state file may carry. A page is far from it in any real use; a higher stored value
+ * could reach the top of the safe integers, where the next revision is no number a write can name (`revisionArg`
+ * and `setCoordinatorMemory` take safe integers only), and the page could never be written again.
+ */
+export declare const MEMORY_REVISION_MAX: number;
+/** A stored memory revision: a whole number from 0 to `MEMORY_REVISION_MAX`; anything else reads as 0 (absent). */
+export declare function storedMemoryRevision(value: unknown): number;
+/**
+ * A stored last writer of a memory: a known kind, an Executor Session id for an executor, and a time; else undefined
+ * (dropped). A writer without a real time is dropped too, so the page never shows a change dated 1970.
+ */
+export declare function storedMemoryWriter(value: unknown): MemoryWriter | undefined;
+/** Most Executor Sessions kept in `memoryExecutors`; past it the oldest ids are dropped. */
+export declare const MEMORY_EXECUTORS_MAX = 20;
+/**
+ * A stored `memoryExecutors`: the entries that look like Executor Session ids, each once, the last
+ * `MEMORY_EXECUTORS_MAX`. A repeated id keeps its last position, as a repeated writer does while the plugin runs
+ * (`storeMemory` moves it to the end).
+ */
+export declare function storedMemoryExecutors(value: unknown): string[];
 /** What loading found besides the state. */
 export interface LoadResult {
     state: PersistedState;

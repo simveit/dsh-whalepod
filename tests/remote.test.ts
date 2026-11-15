@@ -12,7 +12,8 @@ const getState = methods['coordinator/getState']!.result.create() as Codec<Coord
 function fullState(): CoordinatorState {
   return {
     coordinators: [
-      { id: 'c-2', sessionId: 's-c2', name: 'Noether', title: 'Release', executorPrompt: 'Write tests first.\nAsk before adding a dependency.', home: '/h/coordinator-2', folder: '/h/elsewhere', folderProblem: 'refused: inside ~/Library',
+      { id: 'c-2', sessionId: 's-c2', name: 'Noether', title: 'Release', executorPrompt: 'Write tests first.\nAsk before adding a dependency.', memory: '## Preferences\n- Short reports.', memoryRevision: 4,
+        memoryBy: { by: 'executor', executorId: 't-1', executorTitle: 'a', at: 9 }, memoryOff: true, home: '/h/coordinator-2', folder: '/h/elsewhere', folderProblem: 'refused: inside ~/Library',
         model: { ok: false, reason: 'model-unavailable', model: 'p/m' }, createdAt: 2, updatedAt: 3 },
       { id: 'c-1', sessionId: null, name: 'Feynman', title: 'Coordinator Feynman', home: '/h/dsh-threads', folder: '/h/dsh-threads', archived: true, chatArchived: true,
         model: { ok: true, model: 'p/m' }, createdAt: 1, updatedAt: 1 },
@@ -71,9 +72,11 @@ test('the client codec reads the startup validation flag and degrades a bad one'
   assert.equal((getState.parse({ ...base, loading: true }) as { loading?: boolean }).loading, true)
   assert.equal((getState.parse(base) as { loading?: boolean }).loading, undefined)
   assert.equal((getState.parse({ ...base, loading: 'yes' }) as { loading?: boolean }).loading, undefined)
-  const decoded = getState.parse({ ...base, coordinators: [{ id: 'c', sessionId: 's', name: 7, title: 'T', home: '/h', folder: '/h', executorPrompt: 3, createdAt: 1, updatedAt: 1 }] })
+  const decoded = getState.parse({ ...base, coordinators: [{ id: 'c', sessionId: 's', name: 7, title: 'T', home: '/h', folder: '/h', executorPrompt: 3, memory: 4, memoryRevision: -1, memoryBy: { by: 'model', at: 1 }, memoryOff: 'no', createdAt: 1, updatedAt: 1 }] })
   assert.equal(decoded.coordinators[0]!.name, '')
   assert.equal(decoded.coordinators[0]!.executorPrompt, undefined)
+  assert.equal(decoded.coordinators[0]!.memory, undefined)
+  assert.deepEqual([decoded.coordinators[0]!.memoryRevision, decoded.coordinators[0]!.memoryBy, decoded.coordinators[0]!.memoryOff], [undefined, undefined, undefined])
 })
 
 test('the client codec reads the chat state and archived rows (r3)', () => {
@@ -91,11 +94,13 @@ test('the client codec reads the chat state and archived rows (r3)', () => {
   assert.deepEqual(spec.result.create().parse({ deleted: 'c', threads: ['t'] }), { deleted: 'c', threads: ['t'] })
 })
 
-test('the client spec has the executor prompt and rename methods', () => {
+test('the client spec has the executor prompt, memory and rename methods', () => {
   const info = fullState().coordinators[0]!
-  for (const [method, request] of [
-    ['setExecutorPrompt', { coordinatorId: 'c-2', text: 'Write tests first.' }],
-    ['renameCoordinator', { coordinatorId: 'c-2', name: 'Hypatia' }],
+  for (const [method, request, result] of [
+    ['setExecutorPrompt', { coordinatorId: 'c-2', text: 'Write tests first.' }, info],
+    ['setCoordinatorMemory', { coordinatorId: 'c-2', text: '- Short reports.', revision: 4 }, { saved: false, coordinator: info }],
+    ['setCoordinatorMemoryEnabled', { coordinatorId: 'c-2', enabled: false }, info],
+    ['renameCoordinator', { coordinatorId: 'c-2', name: 'Hypatia' }, info],
   ] as const) {
     const spec = methods[`coordinator/${method}`]!
     assert.ok(spec !== undefined, method)
@@ -104,8 +109,12 @@ test('the client spec has the executor prompt and rename methods', () => {
     assert.equal(spec.parameters[0]!.acceptsUndefined, undefined)
     assert.deepEqual(spec.parameters[0]!.codec.create().parse(request), request)
     assert.throws(() => spec.parameters[0]!.codec.create().parse({ coordinatorId: 'c-2' }))
-    assert.deepEqual(spec.result.create().parse(info), info)
+    assert.deepEqual(spec.result.create().parse(result), result)
   }
+  // A memory save without the revision its draft was based on does not leave the client.
+  const memory = methods['coordinator/setCoordinatorMemory']!.parameters[0]!.codec.create()
+  for (const revision of [undefined, -1, 1.5, '4']) assert.throws(() => memory.parse({ coordinatorId: 'c-2', text: 'x', revision }), String(revision))
+  assert.throws(() => methods['coordinator/setCoordinatorMemoryEnabled']!.parameters[0]!.codec.create().parse({ coordinatorId: 'c-2', enabled: 'no' }))
 })
 
 test('the client spec mirrors the round-2 Remote methods', () => {

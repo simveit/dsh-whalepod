@@ -6,10 +6,11 @@
  * folders. Layout, row pattern and empty state follow dsh's Automation tasks and Plugins pages; see styles.ts.
  */
 import { memo, useEffect, useId, useState, type ReactNode } from 'react'
-import type { CoordinatorInfo } from '../types.ts'
+import type { CoordinatorInfo, SetCoordinatorMemoryResult } from '../types.ts'
 import type { FolderDecision, HostProblem, ModelHealth, ThreadInfo } from './contract.ts'
 import { CoordinatorArt } from './art.tsx'
 import { ExecutorPrompt } from './executor-prompt.tsx'
+import { CoordinatorMemory } from './memory.tsx'
 import { FolderLine, PathField, PickWait, TypePathButton, usePendingPick, type PickResult } from './folder.tsx'
 import { CoordinatorName, Monogram } from './identity.tsx'
 import { IconArchive, IconChat, IconChevron, IconTrash, IconWarning } from './icons.tsx'
@@ -41,6 +42,10 @@ export interface PanelActions {
   setCoordinatorFolder(coordinatorId: string, path: string): Promise<void>
   /** Save a coordinator's executor prompt (empty text clears it). */
   setExecutorPrompt(coordinatorId: string, text: string): Promise<void>
+  /** Replace a coordinator's memory (empty text clears it), based on memory revision `revision`; not saved when the memory changed since. */
+  setCoordinatorMemory(coordinatorId: string, text: string, revision: number): Promise<SetCoordinatorMemoryResult>
+  /** Switch a coordinator's memory on or off (off keeps the text). */
+  setCoordinatorMemoryEnabled(coordinatorId: string, enabled: boolean): Promise<void>
   /** Rename a coordinator; throws with the host's reason when the name is refused. */
   renameCoordinator(coordinatorId: string, name: string): Promise<void>
   /** Archive a coordinator; `force` also stops its working Executor Sessions; `removeWorkspace` removes its sidebar Workspace (files stay). */
@@ -352,7 +357,7 @@ function DeleteConfirm({ coordinator, archivedCount, t, onCancel, onConfirm }: {
 }
 
 export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval, openCoordinator, newCoordinator, pickFolder, setCoordinatorFolder,
-  setExecutorPrompt, renameCoordinator, archiveCoordinator, deleteCoordinator, select, openSession, archiveThread, setThreadPermission, confirmFolder, removeAllowedFolder,
+  setExecutorPrompt, setCoordinatorMemory, setCoordinatorMemoryEnabled, renameCoordinator, archiveCoordinator, deleteCoordinator, select, openSession, archiveThread, setThreadPermission, confirmFolder, removeAllowedFolder,
   resumeThread, refresh, holdFast }: PanelProps) {
   const snapshot = useCoordinator(s => s)
   const now = useNow()
@@ -531,6 +536,9 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
         <FolderLine key={`folder-${selected.id}`} coordinator={selected} t={t} pickFolder={pickFolder} setFolder={setFolder} />
         <ExecutorPrompt key={`prompt-${selected.id}`} coordinator={selected} t={t}
           onSave={async (id, text) => { await setExecutorPrompt(id, text); refresh() }} />
+        <CoordinatorMemory key={`memory-${selected.id}`} coordinator={selected} t={t} {...(state?.epoch === undefined ? {} : { epoch: state.epoch })}
+          onSave={async (id, text, revision) => { const result = await setCoordinatorMemory(id, text, revision); refresh(); return result }}
+          onToggle={async (id, enabled) => { await setCoordinatorMemoryEnabled(id, enabled); refresh() }} />
       </div>
       <div className="dco-threads-head">
         <h3 className="dco-section-title">{t('threads.label')}</h3>

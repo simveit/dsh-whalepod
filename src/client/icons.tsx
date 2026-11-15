@@ -88,6 +88,14 @@ export const IconInstructions = glyph(<>
   <path stroke="currentColor" strokeLinecap="round" d="M5.75 7.5H10.25M5.75 9.75H10.25M5.75 12H8.5" />
 </>)
 
+/** A notebook with a ribbon bookmark, for a coordinator's memory. Drawn in the same 1px stroke. */
+export const IconMemory = glyph(<>
+  <path stroke="currentColor" strokeLinejoin="round" d="M3.5 2.5C3.5 1.95 3.95 1.5 4.5 1.5H11.5C12.05 1.5 12.5 1.95 12.5 2.5V13.5C12.5 14.05 12.05 14.5 11.5 14.5H4.5C3.95 14.5 3.5 14.05 3.5 13.5V2.5Z" />
+  <path stroke="currentColor" strokeLinecap="round" d="M5.75 1.5V14.5" />
+  <path stroke="currentColor" strokeLinejoin="round" d="M8.25 1.5V6.5L9.5 5.5L10.75 6.5V1.5" />
+  <path stroke="currentColor" strokeLinecap="round" d="M8.25 9.5H10.25M8.25 11.75H10.25" />
+</>)
+
 /** `delete-outline`: a bin, for deleting an archived coordinator's entry. Drawn in the same 1px stroke. */
 export const IconTrash = glyph(<>
   <path stroke="currentColor" strokeLinecap="round" d="M2.5 4H13.5" />

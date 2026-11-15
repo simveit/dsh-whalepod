@@ -349,6 +349,12 @@ export const CSS = `
 .dco-saved { display: inline-flex; align-items: center; gap: 4px; color: var(--dsw-alias-state-success-primary); animation: dco-fade var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
 .dco-unsaved { color: var(--dsw-alias-label-tertiary); }
 .dco-prompt-buttons { display: inline-flex; gap: 8px; margin-left: auto; }
+.dco-memory-switch { margin: 8px 0; }
+.dco-memory-by { margin-top: 6px; }
+.dco-memory-executors { margin-top: 2px; }
+.dco-memory-review { margin-left: 6px; border: 0; padding: 0; background: none; font: inherit; color: var(--dsw-alias-label-secondary); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.dco-memory-review:disabled { cursor: default; opacity: 0.5; }
+.dco-memory-changed { margin: 8px 0 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-warn-label, var(--dsw-alias-state-warn-primary)); }
 
 /* Archive confirmation: a hairline card with the Executor Sessions it stops. */
 .dco-confirm { margin: 0 0 16px; padding: 14px 16px; border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-base); box-shadow: inset 0 0 0 var(--dsh-hairline-width, 0.5px) var(--dsw-alias-border-l4, var(--dsw-alias-border-l3)); font-size: 13px; line-height: 20px; animation: dco-rise var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }

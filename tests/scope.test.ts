@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { ReportKind, ThreadInfo } from '../src/types.ts'
 import { findOwned, ownedBy, peersOf, unknownRefMessage, type ScopedRow } from '../src/host/scope.ts'
 import { allSpellings, fillStatic, isToolName, LEGACY_TOOL, renderCoordinatorPrompt, renderThreadPrompt, ROLE, TOOL, toolKey, type ToolKey } from '../src/host/names.ts'
-import { coordinatorTools, threadTools, type SessionId, type ThreadOps } from '../src/host/tools.ts'
+import { coordinatorTools, memoryTools, threadTools, type SessionId, type ThreadOps } from '../src/host/tools.ts'
 import { COORDINATOR_NEVER, COORDINATOR_OWN, coordinatorAllow } from '../src/host/coordinator-tools.ts'
 import { THREAD_DATA_TOOLS, turnSawThreadData } from '../src/host/authority.ts'
 import { checkCall } from '../src/host/home-guard.ts'
@@ -81,15 +81,33 @@ test('renamed tool table round trip: every current and legacy name maps back to 
   assert.equal(new Set(keys.map(k => TOOL[k])).size, keys.length, 'current names are distinct')
   assert.equal(toolKey('bash'), undefined)
   assert.deepEqual(keys.map(k => TOOL[k]), ['executor_start', 'executor_message', 'executor_list', 'executor_read', 'executor_flag_user',
-    'executor_stop', 'executor_archive', 'executor_peers', 'executor_send', 'coordinator_report'])
+    'executor_stop', 'executor_archive', 'executor_peers', 'executor_send', 'coordinator_report', 'memory_update', 'memory_read', 'executor_check_later'])
+  // Tools that never had another name list their current one as the legacy spelling.
+  for (const key of ['report', 'memory', 'memoryRead', 'checkLater'] as const) assert.equal(LEGACY_TOOL[key], TOOL[key])
   // The registered tools carry the current names.
   const ops = fakeOps(new Map()).ops
-  assert.deepEqual([...coordinatorTools(ops), ...threadTools(ops)].map(d => d.name).sort(), keys.map(k => TOOL[k]).sort())
+  assert.deepEqual([...coordinatorTools(ops), ...threadTools(ops), ...memoryTools(ops)].map(d => d.name).sort(), keys.map(k => TOOL[k]).sort())
+  // The memory tools are their own group: both roles get them, so they are in neither role's list.
+  assert.deepEqual(memoryTools(ops).map(d => d.name), ['memory_read', 'memory_update'])
 })
 
 test('coordinator allow list, authority and the home guard know the new and the old names', () => {
-  assert.deepEqual([...COORDINATOR_OWN].sort(), ['executor_archive', 'executor_flag_user', 'executor_list', 'executor_message', 'executor_read', 'executor_start', 'executor_stop'])
+  assert.deepEqual([...COORDINATOR_OWN].sort(), ['executor_archive', 'executor_check_later', 'executor_flag_user', 'executor_list', 'executor_message',
+    'executor_read', 'executor_start', 'executor_stop', 'memory_read', 'memory_update'])
+  // The memory tool carries no Executor Session text, so it does not mark a turn as having seen thread data.
+  assert.ok(!THREAD_DATA_TOOLS.has('memory_update'))
+  assert.ok(!COORDINATOR_NEVER.has('memory_update'))
+  assert.deepEqual(coordinatorAllow(['memory_update'], [], false), [], 'a fenced Session does not get it')
+  // The look-in tool returns no Executor Session text either, and is never on the never list.
+  assert.ok(!THREAD_DATA_TOOLS.has('executor_check_later'))
+  assert.ok(!COORDINATOR_NEVER.has('executor_check_later'))
+  assert.deepEqual(coordinatorAllow(['executor_check_later'], [], false), [], 'a fenced Session does not get it')
   for (const name of allSpellings(['report', 'peers', 'send'])) assert.ok(COORDINATOR_NEVER.has(name), name)
+  // Reading the memory is a coordinator tool too. It is not counted as Executor Session data, although a Lead may
+  // have written the page (docs/security.md, T11a and Known limits 18).
+  assert.ok(!THREAD_DATA_TOOLS.has('memory_read'))
+  assert.ok(!COORDINATOR_NEVER.has('memory_read'))
+  assert.deepEqual(coordinatorAllow(['memory_read', 'memory_update'], [], false), [], 'a fenced Session gets neither')
   assert.deepEqual(coordinatorAllow(['executor_list', 'thread_list', 'executor_send', 'read'], ['thread_send']), ['executor_list', 'read'])
   for (const name of ['executor_read', 'executor_list', 'thread_read', 'thread_list']) assert.ok(THREAD_DATA_TOOLS.has(name), name)
   for (const name of ['thread_list', 'executor_list']) {
@@ -98,7 +116,7 @@ test('coordinator allow list, authority and the home guard know the new and the 
   }
   // Text-only tools: a brief that mentions ~/.dsh is not a file access, under either name.
   const env = { home: '/home/u', roots: ['/home/u/.dsh'], temp: ['/tmp'], fs: { realpath: (p: string) => p } }
-  for (const name of ['executor_start', 'thread_start', 'executor_send', 'thread_send']) {
+  for (const name of ['executor_start', 'thread_start', 'executor_send', 'thread_send', 'memory_update', 'memory_read', 'executor_check_later']) {
     assert.equal(checkCall({ name, args: { brief: 'never read ~/.dsh' }, cwds: ['/w'], askMode: false }, env), undefined, name)
   }
   assert.notEqual(checkCall({ name: 'bash', args: { command: 'cat ~/.dsh/x' }, cwds: ['/w'], askMode: false }, env), undefined)
@@ -127,13 +145,13 @@ test('prompts render with no leftover placeholder and only the new tool names', 
     assert.doesNotMatch(text, /\u2014/, 'no em-dashes')
   }
   assert.match(coordinator, /Your own folder is `\/Users\/u\/Documents\/deepseek-harness\/coordinator-2`/)
-  for (const key of ['start', 'message', 'list', 'read', 'flagUser', 'stop', 'archive', 'send', 'report'] as const) assert.match(coordinator, new RegExp(`\`${TOOL[key]}\``))
+  for (const key of ['start', 'message', 'list', 'read', 'flagUser', 'stop', 'archive', 'send', 'report', 'memory', 'memoryRead'] as const) assert.match(coordinator, new RegExp(`\`${TOOL[key]}\``))
   assert.match(coordinator, new RegExp(ROLE.executorSessions))
   assert.match(coordinator, /under the same coordinator/)
   assert.match(thread, /Executor Session t-1a2b \("Fix it"\)/)
   assert.match(thread, /coordinator "Coordinator 2"/)
   assert.match(thread, /under the same coordinator/)
-  for (const key of ['report', 'peers', 'send'] as const) assert.match(thread, new RegExp(`\`${TOOL[key]}\``))
+  for (const key of ['report', 'peers', 'send', 'memoryRead', 'memory'] as const) assert.match(thread, new RegExp(`\`${TOOL[key]}\``))
   // loadPrompts leaves exactly the per-request placeholders.
   assert.deepEqual([...fillStatic(raw('coordinator.md')).matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]).sort().filter((v, i, a) => a.indexOf(v) === i), ['coordinatorFolder'])
   assert.deepEqual([...new Set([...fillStatic(raw('thread.md')).matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]))].sort(), ['coordinatorTitle', 'threadId', 'threadTitle'])
@@ -172,6 +190,8 @@ function fakeOps(coordinatorBySession: Map<SessionId, string>) {
     return me
   }
   const mine = (caller: SessionId, ref: string) => findOwned(threads, coordinatorOf(caller), ref)
+  /** The coordinator whose memory page a caller works on: its own, or as a Lead its row's owner. */
+  const memoryOf = (caller: SessionId): string => leads.get(caller)?.info.coordinatorId ?? coordinatorOf(caller)
   const ops: ThreadOps = {
     async startThread(caller, input) { const c = coordinatorOf(caller); effects.push(`start ${c}`); return { ...info('t-new', c, input.title) } },
     async messageThread(caller, ref) { const t = mine(caller, ref); effects.push(`message ${t.info.id}`); return { thread: t.info.id, delivery: 'steer' } },
@@ -182,6 +202,9 @@ function fakeOps(coordinatorBySession: Map<SessionId, string>) {
     async archiveThread(caller, ref) { const t = mine(caller, ref); effects.push(`archive ${t.info.id}`); return { archived: t.info.id } },
     report(caller, kind: ReportKind) { const me = leadOf(caller); effects.push(`report ${me.info.id} ${kind}`); return { delivered: 'quiet', note: 'ok' } },
     peers(caller) { const me = leadOf(caller); return { you: me.info.id, threads: peersOf(threads.map(t => t.info), me.info.coordinatorId, me.info.id).map(t => t.id) } },
+    updateMemory(caller) { const c = memoryOf(caller); effects.push(`memory ${c}`); return { characters: 0, max: 6000, revision: 1, of: c } },
+    readMemory(caller) { return { revision: 0, characters: 0, of: memoryOf(caller) } },
+    checkLater(caller, ref) { const t = mine(caller, ref); effects.push(`check ${t.info.id}`); return { executor: t.info.id } },
     async sendPeer(caller, ref) {
       const me = leadOf(caller)
       if (coordinatorBySession.has(ref.trim())) throw new Error(`to reach the coordinator use ${TOOL.report}`)
@@ -202,6 +225,7 @@ test('no coordinator tool can reach another coordinator\'s executor, and the err
   const tools = byName(coordinatorTools(ops))
   const refTools: [string, Record<string, unknown>][] = [
     [TOOL.message, { text: 'hi' }], [TOOL.read, {}], [TOOL.flagUser, { reason: 'r' }], [TOOL.stop, {}], [TOOL.archive, { force: true }],
+    [TOOL.checkLater, { minutes: 10 }],
   ]
   for (const [name, extra] of refTools) {
     for (const ref of ['t-a1', 's-t-a1', 'Alpha work']) {
@@ -220,12 +244,12 @@ test('no coordinator tool can reach another coordinator\'s executor, and the err
   const started = await run(tools.get(TOOL.start)!, 's-coord-b', { title: 'New', brief: 'b' })
   assert.equal(started['coordinatorId'], 'c-b')
   // Only the owner's own calls had an effect; every foreign call was refused before it touched anything.
-  assert.deepEqual(effects, ['message t-a1', 'read t-a1', 'flag t-a1', 'stop t-a1', 'archive t-a1', 'start c-b'])
+  assert.deepEqual(effects, ['message t-a1', 'read t-a1', 'flag t-a1', 'stop t-a1', 'archive t-a1', 'check t-a1', 'start c-b'])
 })
 
 test('every tool fails closed without a calling agent, before reaching the thread service', async () => {
   const { ops, effects } = fakeOps(new Map([['s-coord-a', 'c-a']]))
-  for (const def of [...coordinatorTools(ops), ...threadTools(ops)]) {
+  for (const def of [...coordinatorTools(ops), ...threadTools(ops), ...memoryTools(ops)]) {
     const result = await run(def, undefined, { thread: 't-a1', title: 't', brief: 'b', text: 'x', reason: 'r', kind: 'result' })
     assert.equal(result['error'], `${def.name} needs a calling agent`)
   }
@@ -249,5 +273,16 @@ test('executor tools see only executors under the same coordinator', async () =>
   assert.equal((await run(tools.get(TOOL.send)!, 's-t-a1', { thread: 't-a2', text: 'hi' }))['to'], 't-a2')
   // A coordinator is not an executor lead: the executor tools refuse it.
   assert.match(String((await run(tools.get(TOOL.report)!, 's-coord-a', { kind: 'result', text: 'x' }))['error']), /not an executor session lead/)
-  assert.deepEqual(effects, ['send t-a1->t-a2'])
+  // The memory tools take no argument that could name a coordinator: the page comes from the caller alone.
+  const memory = byName(memoryTools(ops))
+  assert.deepEqual(memory.get(TOOL.memoryRead)!.parameters, { type: 'object', properties: {}, required: [] })
+  assert.deepEqual(Object.keys((memory.get(TOOL.memory)!.parameters as { properties: object }).properties), ['text', 'revision'])
+  for (const name of [TOOL.memoryRead, TOOL.memory]) {
+    const args = { text: 'x', revision: 0, coordinator: 'c-b', coordinatorId: 'c-b', executor: 't-b1' }
+    assert.equal((await run(memory.get(name)!, 's-t-a1', args))['of'], 'c-a', name)
+    assert.equal((await run(memory.get(name)!, 's-t-b1', args))['of'], 'c-b', name)
+    assert.equal((await run(memory.get(name)!, 's-coord-a', args))['of'], 'c-a', name)
+    assert.match(String((await run(memory.get(name)!, 's-stranger', args))['error']), /not a coordinator/, name)
+  }
+  assert.deepEqual(effects, ['send t-a1->t-a2', 'memory c-a', 'memory c-b', 'memory c-a'])
 })

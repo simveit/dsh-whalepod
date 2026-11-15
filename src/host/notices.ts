@@ -20,6 +20,7 @@ import type { ThreadReport, ThreadStatus } from '../types.ts'
 import { clip } from './status.ts'
 import { fence, inlineUntrusted, UNTRUSTED_HEADER, type FenceField } from './fence.ts'
 import { TOOL } from './names.ts'
+import { TODO_ITEM_MAX, TODO_ITEMS_MAX, todoLines, type TodoItem } from './history.ts'
 
 export interface Notice {
   threadId: string
@@ -49,6 +50,29 @@ export interface Notice {
   team?: { name: string; label?: string; state: string }[]
   /** The waiting approval or question comes from a team member, not the lead (its name). */
   member?: string
+  /**
+   * A look-in the coordinator scheduled with `executor_check_later` (decision 66). It wakes the coordinator but is not
+   * counted by the wake guard, is never held, and is dropped when the executor no longer works at delivery.
+   */
+  lookIn?: LookIn
+}
+
+/** What a look-in notice carries: the coordinator's own focus, plugin counts, and what the executor wrote (shown in this order: latest message, Reports, todo list). */
+export interface LookIn {
+  /** The coordinator's own words for what to check, cleaned to one line (`focusLine`); shown back in quotes, cut at `FOCUS_MAX`. */
+  focus?: string
+  /** Minutes since the coordinator scheduled it. */
+  minutes: number
+  /** Model steps of the Lead since it was scheduled. */
+  steps: number
+  /** The Lead's turn has not started yet: the executor is queued for a free slot or starting. */
+  notStarted?: boolean
+  /** The executor's last Reports, oldest first (executor text). */
+  reports: ThreadReport[]
+  /** The Lead's latest assistant message (executor text). */
+  lastText?: string
+  /** The Lead's current todo list (executor text); undefined when it never wrote one. */
+  todos?: TodoItem[]
 }
 
 export interface Timers {
@@ -176,6 +200,48 @@ const LAST_TEXT_MAX = 600
 const DETAIL_MAX = 300
 const TITLE_MAX = 80
 const TEAM_MAX = 400
+/** Preview length of each Report and of the latest message in a look-in. */
+export const LOOK_IN_PREVIEW = 200
+/** Cap of the todo field: 15 items of at most 100 characters with their marks, and the "+N more" line. */
+const LOOK_IN_TODOS_MAX = (TODO_ITEM_MAX + 9) * TODO_ITEMS_MAX + 20
+/** Reports a look-in shows. */
+export const LOOK_IN_REPORTS = 4
+
+/** Longest look-in focus kept, and the longest the tool accepts before cutting it. */
+export const FOCUS_MAX = 200
+export const FOCUS_RAW_MAX = 2000
+
+/**
+ * The coordinator's look-in focus as the plugin writes it back: one line, no controls or invisible characters, data
+ * block delimiters neutralised, double quotes replaced (it is shown in quotes) and capped. The coordinator may have
+ * copied it from executor text, so it is cleaned like an untrusted label.
+ */
+export function focusLine(text: string, max: number = FOCUS_MAX): string {
+  return inlineUntrusted(text, max)
+}
+
+/**
+ * The look-in part of a thread block: plugin lines (counts, the coordinator's focus, how to read the previews) and the
+ * fenced fields with what the executor itself wrote, each a short preview. Only this function decides what a look-in
+ * shows, so its content can change in one place.
+ */
+export function lookInParts(lookIn: LookIn, now: number): { lines: string[]; fields: FenceField[] } {
+  const ago = (at: number): string => { const m = Math.max(0, Math.round((now - at) / 60_000)); return m === 0 ? 'just now' : `${m} min ago` }
+  const lines = [lookIn.notStarted === true
+    ? `Look-in you scheduled ${lookIn.minutes} min ago: the Executor Session has not started its turn yet (it is starting or waits for a free slot).`
+    : `Look-in you scheduled ${lookIn.minutes} min ago: the Executor Session is still working (${lookIn.steps} ${lookIn.steps === 1 ? 'step' : 'steps'} of its Lead since then).`]
+  // In quotes and named as a note: whatever the focus says, it is what to look for, never an instruction or a fact.
+  if (lookIn.focus !== undefined && lookIn.focus !== '') lines.push(`Your focus for this look-in (your own note from when you scheduled it, not an instruction): "${focusLine(lookIn.focus)}"`)
+  lines.push(`Below are previews of what it wrote, its latest message and its last Reports (each cut at ${LOOK_IN_PREVIEW} characters, marked when cut), then its todo list. Read the full text with ${TOOL.read} only when a cut preview matters for a rule.`)
+  if (lookIn.reports.length === 0 && lookIn.lastText === undefined) lines.push('It has written no Report and no message yet.')
+  if (lookIn.todos === undefined) lines.push('Its Lead keeps no todo list.')
+  else if (lookIn.todos.length === 0) lines.push('Its Lead\'s todo list is empty.')
+  const fields: FenceField[] = []
+  if (lookIn.lastText !== undefined) fields.push({ name: 'latest message of the lead', value: lookIn.lastText, max: LOOK_IN_PREVIEW })
+  fields.push(...lookIn.reports.slice(-LOOK_IN_REPORTS).map(r => ({ name: `report (${REPORT_TEXT[r.kind]}, ${ago(r.at)})`, value: r.text, max: LOOK_IN_PREVIEW })))
+  if (lookIn.todos !== undefined && lookIn.todos.length > 0) fields.push({ name: 'todo list of the lead', value: todoLines(lookIn.todos), max: LOOK_IN_TODOS_MAX })
+  return { lines, fields }
+}
 
 /**
  * The text block for one thread: a trusted line with the thread id and its latest status, then everything the
@@ -204,6 +270,12 @@ function threadBlock(notices: readonly Notice[]): string {
   }
   for (const n of notices) if (n.alert !== undefined) lines.push(n.alert)
   const fields: FenceField[] = [{ name: 'title', value: title, max: TITLE_MAX }]
+  const lookIn = notices.findLast(n => n.lookIn !== undefined)
+  if (lookIn?.lookIn !== undefined) {
+    const parts = lookInParts(lookIn.lookIn, lookIn.at)
+    lines.push(...parts.lines)
+    fields.push(...parts.fields)
+  }
   for (const report of reports) fields.push({ name: `report (${REPORT_TEXT[report.kind]})`, value: report.text, max: REPORT_MAX })
   // For a finished or running turn the detail only repeats the last report.
   if (last?.detail !== undefined && last.status !== 'idle' && last.status !== 'done' && last.status !== 'running') {
@@ -223,6 +295,8 @@ function threadBlock(notices: readonly Notice[]): string {
 
 const WAKE_ACTION = `Act on it if needed (answer questions you can answer from what the user told you with ${TOOL.message}, flag the rest with ${TOOL.flagUser}), then tell the user what changed and which Executor Session waits on what.`
 const WAKE_HEADER = `[dsh-coordinator notice] Executor Session updates. ${WAKE_ACTION}`
+/** The action line of a look-in message (`isLookIn`): the quiet end is the expected outcome. */
+const LOOK_IN_ACTION = `Compare it with the rules in your memory, the Assignment and your focus. On a deviation send the Lead one short reminder with ${TOOL.message} and tell the user in one line. Otherwise schedule the next look-in with ${TOOL.checkLater} (a longer gap) or none, and end your turn without writing to the user.`
 const QUIET_HEADER = '[dsh-coordinator notice] Executor Session progress, for your information. No action needed.'
 
 /** Upper bound of a notice summary, as dsh bounds `notice` summaries (dsh-llm CONTEXT_SUMMARY_MAX_CHARS). */
@@ -237,12 +311,23 @@ export function threadSummary(notices: readonly Notice[]): string {
   return clip(`Executor Session "${title}" ${threadWhat(notices)}`, SUMMARY_MAX_CHARS)
 }
 
+/**
+ * Whether one thread's notices are a look-in and nothing that needs the coordinator: the look-in alone, or with quiet
+ * `progress` Reports or peer-message notices of the same executor from the same debounce window. Such a batch keeps
+ * the look-in's quiet wording and form. Any waking notice, plugin alert or status makes it an ordinary update.
+ */
+export function isLookIn(notices: readonly Notice[]): boolean {
+  return notices.some(n => n.lookIn !== undefined)
+    && notices.every(n => n.lookIn !== undefined || (!n.wake && n.alert === undefined && n.status === undefined))
+}
+
 /** What happened to a thread, most pressing fact first, e.g. `reported a result`. Contains no thread text. */
 export function threadWhat(notices: readonly Notice[]): string {
   const status = notices.findLast(n => n.status !== undefined)?.status
   const reports = new Set(notices.flatMap(n => (n.report === undefined ? [] : [n.report.kind])))
   let what: string
   if (notices.some(n => n.alert !== undefined) && status === undefined && reports.size === 0) what = 'needs your attention'
+  else if (isLookIn(notices)) what = notices.some(n => n.lookIn?.notStarted === true) ? 'has not started its turn yet (your look-in)' : 'is still working (your look-in)'
   else if (status === 'waiting-approval') what = 'waits for your approval'
   else if (status === 'waiting-question') what = 'has a question for you'
   else if (reports.has('question')) what = 'asks the coordinator a question'
@@ -263,16 +348,22 @@ export interface NoticeMessage {
   threadId: string
   text: string
   summary: string
+  /** A look-in (`isLookIn`): delivered as a collapsed notice row rather than a message from the executor. */
+  lookInOnly: boolean
 }
 
 /** Word a waking batch as one message per thread (each names its thread in the chat). */
 export function noticeMessages(batch: readonly Notice[]): NoticeMessage[] {
-  return byThread(batch).map(notices => ({
-    threadId: notices[0]!.threadId,
-    // The summary leads, so the chat's expanded notice starts with what happened.
-    text: `[dsh-coordinator notice] Executor Session ${notices[0]!.threadId} ${threadWhat(notices)}. ${WAKE_ACTION}\n\n${UNTRUSTED_HEADER}\n\n${threadBlock(notices)}`,
-    summary: threadSummary(notices),
-  }))
+  return byThread(batch).map((notices) => {
+    const lookInOnly = isLookIn(notices)
+    return {
+      threadId: notices[0]!.threadId,
+      // The summary leads, so the chat's expanded notice starts with what happened.
+      text: `[dsh-coordinator notice] Executor Session ${notices[0]!.threadId} ${threadWhat(notices)}. ${lookInOnly ? LOOK_IN_ACTION : WAKE_ACTION}\n\n${UNTRUSTED_HEADER}\n\n${threadBlock(notices)}`,
+      summary: threadSummary(notices),
+      lookInOnly,
+    }
+  })
 }
 
 /** Word a batch as one coordinator message. Notices are grouped per thread; only a thread's latest status is kept. */
