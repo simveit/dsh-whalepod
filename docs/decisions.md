@@ -755,3 +755,17 @@ The plugin builds this in the shape the dsh extension cookbook gives for memory:
 
 **Rejected.** One followup per turn with the rest held: slow, and the first message could still sit in the strip while the chat compacts. Persisting the waiting notices in the state file: they carry executor text, the state file is a trust boundary, and each field would need validation on load; not worth it for a list that is empty whenever the coordinator is idle. Injecting the waiting notices into the first step of the user's queued turn: see above. Adding the notices that waited through a stopped turn to the chat without waking it: see above.
 
+## 68. The user may name a coordinator when creating it; the automatic name stays the default
+
+**Context.** A coordinator got its name from the plugin (decision 53) and could be renamed afterwards with the pencil. The owner wanted to be offered the choice of a name before one is assigned, with the automatic name when they choose nothing.
+
+**Decision.** New coordinator, Choose folder... and Type a path on the Coordinator page no longer create at once. Each opens one inline form under the head with an optional name field (placeholder "Automatic") and Create; Enter or Create with an empty field keeps the automatic name. `createCoordinator` takes an optional `name`, which the host checks before it makes anything: `checkCoordinatorName` and uniqueness among the live coordinators by `nameKey`, exactly the checks and error texts of `renameCoordinator`. The uniqueness check runs inside the serialised creation, so two calls with one name cannot both pass. A refused name creates no record, folder, Workspace or Session. The home folder follows the existing rule for names (`coordinatorFolderName`): the Latin letters and digits of the name, the list entry's slug for a listed name, plain `coordinator` for a name without any.
+
+**Why a form in place, and for all three buttons.** The page already uses an inline field for a typed path, and has no dialog for creating. One form for the three ways keeps the name where the creation happens; asking for the name only on the plain button would make the folder choices skip it. The cost is one more key press for a coordinator with an automatic name: New coordinator, then Enter.
+
+**Why the placeholder does not show the name the coordinator will get.** The automatic name is picked at random when the coordinator is created, among the names free at that moment. Showing it beforehand would need a Remote method that suggests or reserves a name, and a rule for a suggestion that was taken meanwhile. The placeholder says "Automatic" and the hint says where the name comes from.
+
+**Why only this path.** `ensureCoordinator` without a coordinator, a promoted candidate, the upgrade of a version 1 file and Reopen have no moment at which the user is asked, and several run without the page. They keep `freeName`; the user renames afterwards.
+
+**Rejected.** A dialog: the page has none for this flow. A name argument on a model tool: coordinators are created by the user only. Client-only validation: the Remote method is the boundary, so the host checks.
+

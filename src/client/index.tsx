@@ -175,8 +175,8 @@ export async function apply(ctx: ClientContext): Promise<void> {
         store.refresh()
         await openReal(sessionId)
       },
-      newCoordinator: async (home) => {
-        const { coordinatorId, sessionId } = await store.source.createCoordinator(home)
+      newCoordinator: async (options) => {
+        const { coordinatorId, sessionId } = await store.source.createCoordinator(options)
         store.select(coordinatorId)
         store.refresh()
         await openReal(sessionId)

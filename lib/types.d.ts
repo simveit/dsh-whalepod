@@ -238,9 +238,13 @@ export interface EnsureCoordinatorResult {
     coordinatorId: string;
     sessionId: string;
 }
-/** Request of `coordinator/createCoordinator`: `home` from the folder picker, else `<base>/coordinator-N`. */
+/**
+ * Request of `coordinator/createCoordinator`: `home` from the folder picker, else `<base>/coordinator-<name>`; `name`
+ * as the user typed it on the page (checked like a rename), else a free name from the built-in list.
+ */
 export interface CreateCoordinatorRequest {
     home?: string;
+    name?: string;
 }
 /** Request of `coordinator/setCoordinatorFolder`; returns the updated `CoordinatorInfo`. */
 export interface SetCoordinatorFolderRequest {

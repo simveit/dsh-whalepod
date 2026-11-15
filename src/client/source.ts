@@ -27,8 +27,11 @@ export interface CoordinatorSource {
   getState(signal?: AbortSignal): Promise<ClientState>
   /** Open the named coordinator (reopening an archived chat), else the last used one, else a new one. */
   ensureCoordinator(coordinatorId?: string, signal?: AbortSignal): Promise<EnsureCoordinatorResult>
-  /** New coordinator; `home` from the folder picker, else the host picks `<base>/coordinator-N`. */
-  createCoordinator(home?: string, signal?: AbortSignal): Promise<EnsureCoordinatorResult>
+  /**
+   * New coordinator; `home` from the folder picker, else the host picks `<base>/coordinator-<name>`; `name` as the user
+   * chose it, else the host picks one from its built-in list. A refused name or folder creates nothing.
+   */
+  createCoordinator(options?: { home?: string; name?: string }, signal?: AbortSignal): Promise<EnsureCoordinatorResult>
   setCoordinatorFolder(coordinatorId: string, path: string, signal?: AbortSignal): Promise<CoordinatorInfo>
   /** Standing instructions for the coordinator's new Executor Sessions; empty text clears them. */
   setExecutorPrompt(coordinatorId: string, text: string, signal?: AbortSignal): Promise<CoordinatorInfo>
@@ -107,7 +110,9 @@ export function remoteSource(remote: () => CoordinatorRemote | undefined): Coord
     getState: signal => call(() => get().getState(signal)),
     // Requests are always sent as objects, so the host never has to accept a missing parameter.
     ensureCoordinator: (coordinatorId, signal) => call(() => get().ensureCoordinator(coordinatorId === undefined ? {} : { coordinatorId }, signal)),
-    createCoordinator: (home, signal) => call(() => get().createCoordinator(home === undefined ? {} : { home }, signal)),
+    createCoordinator: (options, signal) => call(() => get().createCoordinator({
+      ...(options?.home === undefined ? {} : { home: options.home }), ...(options?.name === undefined || options.name.trim() === '' ? {} : { name: options.name }),
+    }, signal)),
     setCoordinatorFolder: (coordinatorId, path, signal) => call(() => get().setCoordinatorFolder({ coordinatorId, path }, signal)),
     setExecutorPrompt: (coordinatorId, text, signal) => call(() => get().setExecutorPrompt({ coordinatorId, text }, signal)),
     setCoordinatorMemory: (coordinatorId, text, revision, signal) => call(() => get().setCoordinatorMemory({ coordinatorId, text, revision }, signal)),
@@ -283,7 +288,20 @@ export function fakeSource(): CoordinatorSource {
     if (trimmed.startsWith(`${HOME}/Library`)) return 'folders inside ~/Library are refused'
     return undefined
   }
-  const create = (home?: string): EnsureCoordinatorResult => {
+  /** Like the host: a name has 1 to 40 characters, no control characters, and no other live coordinator has it. */
+  const nameRefusal = (name: string, exceptId?: string): string | undefined => {
+    if (name === '' || [...name].length > 40) return 'a name has 1 to 40 characters'
+    if (/[\u0000-\u001f\u007f]/.test(name)) return 'a name cannot contain control characters'
+    if (coordinators.some(c => c.id !== exceptId && c.archived !== true && c.name.toLowerCase() === name.toLowerCase())) return `another coordinator is already called ${name}`
+    return undefined
+  }
+  const create = (home?: string, wanted?: string): EnsureCoordinatorResult => {
+    // Like the host: a chosen name is checked before anything is made; an empty one means the automatic name.
+    const chosen = wanted?.trim() ?? ''
+    if (chosen !== '') {
+      const why = nameRefusal(chosen)
+      if (why !== undefined) throw new SourceError(why, false)
+    }
     if (home !== undefined) {
       const why = refusal(home)
       if (why !== undefined) throw new SourceError(`This folder can't be a coordinator's home: ${why}.`, false)
@@ -292,7 +310,7 @@ export function fakeSource(): CoordinatorSource {
     const id = `c-${hex()}`
     const live = new Set(coordinators.filter(c => c.archived !== true).map(c => c.name))
     const free = FAKE_NAMES.filter(n => !live.has(n))
-    const name = free.length > 0 ? free[Math.floor(Math.random() * free.length)]! : `Noether ${coordinators.length + 1}`
+    const name = chosen !== '' ? chosen : free.length > 0 ? free[Math.floor(Math.random() * free.length)]! : `Noether ${coordinators.length + 1}`
     const path = home ?? `${BASE}/coordinator-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
     coordinators.push({ id, sessionId: `fake-coordinator-${id}`, name, title: name, home: path, folder: path, createdAt: at, updatedAt: at })
     lastCoordinatorId = id
@@ -329,9 +347,9 @@ export function fakeSource(): CoordinatorSource {
       revision += 1
       return { coordinatorId: record.id, sessionId: record.sessionId! }
     },
-    async createCoordinator(home, signal) {
+    async createCoordinator(options, signal) {
       await delay(signal)
-      return create(home)
+      return create(options?.home, options?.name)
     },
     async setCoordinatorFolder(coordinatorId, path, signal) {
       await delay(signal)
@@ -389,11 +407,8 @@ export function fakeSource(): CoordinatorSource {
       await delay(signal)
       const record = find(coordinatorId)
       const trimmed = name.trim()
-      if (trimmed === '' || trimmed.length > 40) throw new SourceError('a name has 1 to 40 characters', false)
-      if (/[\u0000-\u001f\u007f]/.test(trimmed)) throw new SourceError('a name cannot contain control characters', false)
-      if (coordinators.some(c => c.id !== coordinatorId && c.archived !== true && c.name.toLowerCase() === trimmed.toLowerCase())) {
-        throw new SourceError(`another coordinator is already called ${trimmed}`, false)
-      }
+      const why = nameRefusal(trimmed, coordinatorId)
+      if (why !== undefined) throw new SourceError(why, false)
       Object.assign(record, { name: trimmed, title: record.title === record.name ? trimmed : record.title, updatedAt: Date.now() })
       revision += 1
       return { ...record }

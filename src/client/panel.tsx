@@ -1,5 +1,6 @@
 /**
- * Coordinator home (the sidebar's "Coordinator" page): heading with New coordinator, Choose folder and Type a path,
+ * Coordinator home (the sidebar's "Coordinator" page): heading with New coordinator, Choose folder and Type a path
+ * (each opens the inline form of new-coordinator.tsx, where the user may name the coordinator before it is created),
  * the global "Executor Sessions run in" control, page-level notices, the coordinator list and the selected
  * coordinator's detail (name with rename, chat action, archive, folder and executor prompt settings, folder and model
  * notices, its Executor Sessions grouped like the side pane), then rows without a coordinator and the allowed
@@ -11,14 +12,15 @@ import type { FolderDecision, HostProblem, ModelHealth, ThreadInfo } from './con
 import { CoordinatorArt } from './art.tsx'
 import { ExecutorPrompt } from './executor-prompt.tsx'
 import { CoordinatorMemory } from './memory.tsx'
-import { FolderLine, PathField, PickWait, TypePathButton, usePendingPick, type PickResult } from './folder.tsx'
+import { FolderLine, PickWait, TypePathButton, usePendingPick, type PickResult } from './folder.tsx'
 import { CoordinatorName, Monogram } from './identity.tsx'
+import { NewCoordinatorForm } from './new-coordinator.tsx'
 import { IconArchive, IconChat, IconChevron, IconTrash, IconWarning } from './icons.tsx'
 import { plural, type Translate } from './locales.ts'
 import type { ArchiveResult } from './remote.ts'
 import {
-  archivedThreadsOf, chatOf, countsOf, FINISHED, GROUPS, sentence, groupOf, isLoading, isWorking, nameOf, needsUser, orphanThreads, pickCoordinator, sortThreads, threadsOf,
-  type Snapshot, type ThreadGroup,
+  archivedThreadsOf, chatOf, countsOf, FINISHED, GROUPS, sentence, groupOf, isLoading, isWorking, nameOf, needsUser, newDraftAt, orphanThreads, pickCoordinator, sortThreads, threadsOf,
+  type NewCoordinatorDraft, type Snapshot, type ThreadGroup,
 } from './store.ts'
 import { openThreadSession, threadDetail, threadTooltip, ThreadActions, ThreadGlyph, ThreadStatusText, ThreadTime, shortenCwd, useNow, type RowActionHandlers } from './thread-row.tsx'
 import { Button, Tooltip } from './ui.tsx'
@@ -34,8 +36,8 @@ export type UseCoordinator = <T>(select: (snapshot: Snapshot) => T) => T
 export interface PanelActions {
   /** Open a coordinator's chat (reopening it when archived); without an id the last used one, or a new one. Throws with a user-facing message. */
   openCoordinator(coordinatorId?: string): Promise<void>
-  /** Create a coordinator (in `home` when given), select it and open its chat. */
-  newCoordinator(home?: string): Promise<void>
+  /** Create a coordinator (in `home` when given, called `name` when the user chose one), select it and open its chat. */
+  newCoordinator(options?: { home?: string; name?: string }): Promise<void>
   /** Native folder picker: the desktop bridge, else the workspace UI's host picker. */
   pickFolder(): Promise<PickResult>
   /** Change the folder new Executor Sessions of a coordinator start in. */
@@ -364,7 +366,9 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
   // What runs now: 'new', 'choose', or 'open:<coordinator id>'.
   const [busy, setBusy] = useState<string | undefined>(undefined)
   const [notice, setNotice] = useState<Notice | undefined>(undefined)
-  const [newPath, setNewPath] = useState(false)
+  // The inline form that is open before a coordinator is created: where it goes, and the name typed so far. The
+  // name is kept here, so it is still there when the form comes back after the folder picker.
+  const [draft, setDraft] = useState<NewCoordinatorDraft | undefined>(undefined)
   const [archiving, setArchiving] = useState<string | undefined>(undefined)
   const [deleting, setDeleting] = useState<string | undefined>(undefined)
   // A neutral one-line notice (not an error), e.g. why an archived coordinator's Workspace was kept.
@@ -410,15 +414,17 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
       else say(t('error.open', { reason }))
     })
   }
-  const create = (home?: string) => run(home === undefined ? 'new' : 'choose', async () => { await newCoordinator(home); setNewPath(false) },
+  // A refused name or folder creates nothing: the form stays open and the notice says why.
+  const create = (options: { home?: string; name?: string }) => run(options.home === undefined ? 'new' : 'choose', async () => { await newCoordinator(options); setDraft(undefined) },
     reason => { say(t('error.create', { reason })) })
+  const startNew = () => { setNotice(undefined); setDraft(current => newDraftAt(current, { kind: 'default' })) }
   const choose = async () => {
     setNotice(undefined)
     const picked = await pick.start()
-    if (picked.kind === 'picked') await create(picked.path)
-    else if (picked.kind === 'unavailable' || picked.kind === 'timeout') setNewPath(true)
+    if (picked.kind === 'picked') setDraft(current => newDraftAt(current, { kind: 'picked', home: picked.path }))
+    else if (picked.kind === 'unavailable' || picked.kind === 'timeout') setDraft(current => newDraftAt(current, { kind: 'typed' }))
   }
-  const typePath = () => { pick.cancel(); setNotice(undefined); setNewPath(true) }
+  const typePath = () => { pick.cancel(); setNotice(undefined); setDraft(current => newDraftAt(current, { kind: 'typed' })) }
   const openThread = (thread: ThreadInfo) => {
     setNotice(undefined)
     // A row without a coordinator that waits for its folder has nothing to open (L7): say so instead.
@@ -574,7 +580,7 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
       <p>{t('empty.coordinators.body')}</p>
       <div className="dco-empty-actions">
         <Button variant="outline" disabled={busy !== undefined || baseProblem !== undefined || hostDown || pick.pending} aria-busy={busy === 'new'}
-          data-testid="dco-empty-new" onClick={() => { void create() }}>{busy === 'new' ? t('newCoordinator.busy') : t('newCoordinator')}</Button>
+          data-testid="dco-empty-new" onClick={startNew}>{busy === 'new' ? t('newCoordinator.busy') : t('newCoordinator')}</Button>
       </div>
       <PermissionNote state={state?.threadPermission} t={t} onPage />
     </div>
@@ -602,7 +608,7 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
                 onClick={() => { void choose() }}>{t('chooseFolder')}</Button>
             </Tooltip>
             <Button variant="primary" size="head" icon={<IconChat size={14} />} data-testid="dco-new-coordinator" disabled={newDisabled || pick.pending}
-              aria-busy={busy === 'new'} onClick={() => { void create() }}>{busy === 'new' ? t('newCoordinator.busy') : t('newCoordinator')}</Button>
+              aria-busy={busy === 'new'} onClick={startNew}>{busy === 'new' ? t('newCoordinator.busy') : t('newCoordinator')}</Button>
           </div>
           <div className="dco-head-perm">
             <PermissionControl state={state?.threadPermission} t={t} dsh={dshPermission}
@@ -610,8 +616,9 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
           </div>
         </div>
         {pick.pending && <PickWait slow={pick.slow} t={t} onType={typePath} onCancel={pick.cancel} />}
-        {newPath && <PathField label={t('chooseFolder.label')} hint={t('folder.manual')} initial={state?.base?.path ?? ''} submit={t('chooseFolder.create')}
-          busy={busy === 'choose'} t={t} onSubmit={(path) => { void create(path) }} onCancel={() => { setNewPath(false) }} />}
+        {draft !== undefined && !pick.pending && <NewCoordinatorForm key={draft.kind === 'picked' ? `picked:${draft.home}` : draft.kind} draft={draft} coordinators={coordinators}
+          basePath={state?.base?.path ?? ''} busy={busy === 'new' || busy === 'choose'} t={t}
+          onName={(name) => { setDraft(current => (current === undefined ? current : { ...current, name })) }} onCreate={(options) => { void create(options) }} onCancel={() => { setDraft(undefined) }} />}
         {__DSH_COORDINATOR_DEV__ && fake && <p className="dco-dev-note" data-testid="dco-fake">Fake data source (?coordinatorSource=real to switch back)</p>}
         {problems.map(problem => <ProblemNotice key={problem.kind} problem={problem} t={t} />)}
         {baseProblem !== undefined && !problems.some(p => p.kind === 'bad-root') && <NoticeBox tone="warning" testId="dco-base-problem">

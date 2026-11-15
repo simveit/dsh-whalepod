@@ -2,6 +2,14 @@
 
 All notable changes to this plugin are listed here. Versions follow [Semantic Versioning](https://semver.org/). The DeepSeek Harness versions a release runs on are in `engines.dsh` in `package.json`.
 
+## 0.3.0 - 2026-11-15
+
+### Added
+
+- You can name a coordinator when you create it. New coordinator on the Coordinator page now opens a small form with one field, "Name for the new coordinator", and Create. Type a name and press Enter or Create, or leave the field empty and the coordinator gets a name from the built-in list, as before. Choose folder... and Type a path open the same form for the folder you pick or type. A name you type follows the rules of a rename (1 to 40 characters, no control characters, no middle dot, not only digits, different from every other live coordinator's name), and a refused name creates nothing. The coordinator's folder is named after the Latin letters and digits of the name (`coordinator-research-desk`), or `coordinator` when it has none. Coordinators that come about another way (Open coordinator chat with none yet, a New Session in a coordinator's group, an upgrade from an earlier release) still get the automatic name; rename them with the pencil.
+- When no folder is free for a new coordinator below the base folder, the error in the form now says why and that you can give a folder with Choose folder... or Type a path.
+- What was checked: the test suite on a fake host. In `dsh web` 0.2.2-rc.3 with a scripted model: the form opened, a duplicate name was refused and created nothing, and Type a path created one coordinator with an automatic name and one with a typed name. In the desktop app (dsh-desktop 0.2.2-rc.3) with a real model: a typed name became the name of the coordinator, its chat, its sidebar group and its folder. Not run: Choose folder... with the system's folder picker.
+
 ## 0.2.1 - 2026-11-15
 
 ### Fixed

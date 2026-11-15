@@ -3105,23 +3105,38 @@ export class ThreadService implements ThreadOps {
   }
 
   /**
-   * New coordinator (design 2.2, path 1): a free name, its own folder `coordinator-<name>` below the base or the folder
+   * New coordinator (design 2.2, path 1): a name, its own folder `coordinator-<name>` below the base or the folder
    * the user picked, registered as a Workspace titled like the chat ("Coordinator <name>"), and a chat Session there on
    * `standard`, on `workspace-write`, narrowed, with the model-free opening turn.
+   *
+   * The name is the one the user chose on the page (`name`), checked like a rename (`checkCoordinatorName`, unique
+   * among the live coordinators); without one, or with an empty one, a free name from the built-in list. A refused
+   * name creates nothing. Every other way a coordinator comes about (Open chat without one, a New Session in a
+   * coordinator's group, the upgrade of an earlier release, Reopen) keeps the automatic name.
    */
-  createCoordinator(request: { home?: unknown } = {}): Promise<{ coordinatorId: string; sessionId: string }> {
-    const home = (request ?? {}).home
+  createCoordinator(request: { home?: unknown; name?: unknown } = {}): Promise<{ coordinatorId: string; sessionId: string }> {
+    const { home, name } = request ?? {}
     if (home !== undefined && (typeof home !== 'string' || home.trim() === '')) return Promise.reject(new Error('home must be a folder path'))
-    const run = this.creatingCoordinator.then(() => this.createOnce(home as string | undefined))
+    let wanted: string | undefined
+    if (name !== undefined && name !== null && !(typeof name === 'string' && name.trim() === '')) {
+      const checked = checkCoordinatorName(name)
+      if ('error' in checked) return Promise.reject(new Error(checked.error))
+      wanted = checked.name
+    }
+    const run = this.creatingCoordinator.then(() => this.createOnce(home as string | undefined, wanted))
     this.creatingCoordinator = run.catch(() => undefined)
     return run
   }
 
-  private async createOnce(requested: string | undefined): Promise<{ coordinatorId: string; sessionId: string }> {
+  private async createOnce(requested: string | undefined, wanted?: string): Promise<{ coordinatorId: string; sessionId: string }> {
     await this.validated
     if (this.disposed) throw new Error('the coordinator plugin is unloading')
     if (this.liveCoordinators().length >= COORDINATORS_MAX) throw new Error(`at most ${COORDINATORS_MAX} coordinators; archive one on the Coordinator page to add another`)
-    const name = freeName(this.liveCoordinators().map(c => c.name ?? ''), this.pickName)
+    // Checked here, where creations run one after the other: two calls with the same name cannot both pass.
+    if (wanted !== undefined && this.liveCoordinators().some(c => c.name !== undefined && nameKey(c.name) === nameKey(wanted))) {
+      throw new Error(`another coordinator is already called ${wanted}`)
+    }
+    const name = wanted ?? freeName(this.liveCoordinators().map(c => c.name ?? ''), this.pickName)
     const title = coordinatorTitle(name)
     let home: string
     if (requested === undefined) {
@@ -3190,10 +3205,13 @@ export class ThreadService implements ThreadOps {
     const taken = this.takenFolders()
     // Archived coordinators' homes do not block a new home ('new-home'); executor folders keep counting them ('executor').
     const otherHomes = this.otherHomes(undefined, 'new-home')
+    // Why a new folder below the base is refused, when that is what stands in the way (the first reason found).
+    let refused: string | undefined
     for (let n = 1; n <= 200; n++) {
       const candidate = realResolve(join(base, coordinatorFolderName(name, n)), this.fs)
       if (registered.has(candidate) || this.coordinatorWorkspaces.has(candidate) || [...this.coordinators.values()].some(c => c.home === candidate || c.folder === candidate)) continue
-      if (coordinatorFolderProblem(candidate, { home: this.home, fs: this.fs, protectedRoots: this.guardEnv.roots, taken, otherHomes, othersExecutors: taken }) !== undefined) continue
+      const problem = coordinatorFolderProblem(candidate, { home: this.home, fs: this.fs, protectedRoots: this.guardEnv.roots, taken, otherHomes, othersExecutors: taken })
+      if (problem !== undefined) { refused ??= problem; continue }
       try {
         if (readdirSync(candidate).length > 0) continue
       } catch {
@@ -3201,7 +3219,9 @@ export class ThreadService implements ThreadOps {
       }
       return candidate
     }
-    throw new Error(`no free folder for a new coordinator under ${this.shown(base)}`)
+    // Shown in the New coordinator form, which stays open: say what is in the way and what the user can do.
+    throw new Error(`no free folder for a new coordinator under ${this.shown(base)}: ${refused === undefined ? 'every folder name tried there is in use' : `a new folder there is refused (${refused})`}. `
+      + 'Give it a folder yourself with Choose folder or Type a path')
   }
 
   /**

@@ -193,7 +193,7 @@ export default class CoordinatorService extends TypertRemoteService {
     return this.service().ensureCoordinator(value ?? {})
   }
 
-  /** New coordinator: its own folder below the base, or `home` from the folder picker. */
+  /** New coordinator: its own folder below the base, or `home` from the folder picker; `name` when the user chose one. */
   @Remote
   async createCoordinator(request: CreateCoordinatorRequest | undefined, signal: AbortSignal): Promise<EnsureCoordinatorResult> {
     const [value, abort] = split(request, signal)

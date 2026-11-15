@@ -663,12 +663,18 @@ export declare class ThreadService implements ThreadOps {
      */
     private reopenChat;
     /**
-     * New coordinator (design 2.2, path 1): a free name, its own folder `coordinator-<name>` below the base or the folder
+     * New coordinator (design 2.2, path 1): a name, its own folder `coordinator-<name>` below the base or the folder
      * the user picked, registered as a Workspace titled like the chat ("Coordinator <name>"), and a chat Session there on
      * `standard`, on `workspace-write`, narrowed, with the model-free opening turn.
+     *
+     * The name is the one the user chose on the page (`name`), checked like a rename (`checkCoordinatorName`, unique
+     * among the live coordinators); without one, or with an empty one, a free name from the built-in list. A refused
+     * name creates nothing. Every other way a coordinator comes about (Open chat without one, a New Session in a
+     * coordinator's group, the upgrade of an earlier release, Reopen) keeps the automatic name.
      */
     createCoordinator(request?: {
         home?: unknown;
+        name?: unknown;
     }): Promise<{
         coordinatorId: string;
         sessionId: string;

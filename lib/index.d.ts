@@ -28,7 +28,7 @@ export default class CoordinatorService extends TypertRemoteService {
      * a new one.
      */
     ensureCoordinator(request: EnsureCoordinatorRequest | undefined, signal: AbortSignal): Promise<EnsureCoordinatorResult>;
-    /** New coordinator: its own folder below the base, or `home` from the folder picker. */
+    /** New coordinator: its own folder below the base, or `home` from the folder picker; `name` when the user chose one. */
     createCoordinator(request: CreateCoordinatorRequest | undefined, signal: AbortSignal): Promise<EnsureCoordinatorResult>;
     /** Change where a coordinator's new threads go; existing threads and the chat stay where they are. */
     setCoordinatorFolder(request: SetCoordinatorFolderRequest, signal: AbortSignal): Promise<CoordinatorInfo>;

@@ -125,7 +125,7 @@ const permissionModeSchema = (): z.ZodType<string> => (permissionMode ??= z.enum
 let ensureRequest: z.ZodType<EnsureCoordinatorRequest> | undefined
 const ensureRequestSchema = (): z.ZodType<EnsureCoordinatorRequest> => (ensureRequest ??= z.object({ coordinatorId: z.string().optional() }))
 let createRequest: z.ZodType<CreateCoordinatorRequest> | undefined
-const createRequestSchema = (): z.ZodType<CreateCoordinatorRequest> => (createRequest ??= z.object({ home: z.string().optional() }))
+const createRequestSchema = (): z.ZodType<CreateCoordinatorRequest> => (createRequest ??= z.object({ home: z.string().optional(), name: z.string().optional() }))
 let ensureResult: z.ZodType<EnsureCoordinatorResult> | undefined
 const ensureResultSchema = (): z.ZodType<EnsureCoordinatorResult> => (ensureResult ??= z.object({ coordinatorId: z.string(), sessionId: z.string() }))
 let folderRequest: z.ZodType<SetCoordinatorFolderRequest> | undefined

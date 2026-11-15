@@ -281,6 +281,26 @@ export function nameProblem(name: string, coordinatorId: string, coordinators: r
   return undefined
 }
 
+/**
+ * The same quick check for the name typed for a new coordinator. The field is optional: an empty name is fine and
+ * means the automatic name from the host's built-in list.
+ */
+export function newNameProblem(name: string, coordinators: readonly Pick<CoordinatorInfo, 'id' | 'name' | 'archived'>[]): string | undefined {
+  return name.trim() === '' ? undefined : nameProblem(name, '', coordinators)
+}
+
+/**
+ * The inline form that is open before a coordinator is created: where the coordinator goes (the default place, a
+ * folder from the picker, or a path the user types) and the name typed so far. The page holds it, not the form,
+ * because the form is taken down while the folder picker is open and built again for the folder that was picked.
+ */
+export type NewCoordinatorDraft = ({ kind: 'default' } | { kind: 'picked'; home: string } | { kind: 'typed' }) & { name: string }
+
+/** The form for another place (New coordinator, the picker's folder, Type a path): the name already typed stays. */
+export function newDraftAt(current: Pick<NewCoordinatorDraft, 'name'> | undefined, place: { kind: 'default' } | { kind: 'picked'; home: string } | { kind: 'typed' }): NewCoordinatorDraft {
+  return { ...place, name: current?.name ?? '' }
+}
+
 /** What the Memory row holds: the user's text, and the host text and memory revision that text is based on. */
 export interface MemoryRow {
   draft: string

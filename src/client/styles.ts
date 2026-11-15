@@ -394,6 +394,8 @@ export const CSS = `
 .dco-path-hint { margin: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
 .dco-path-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dco-path-buttons { display: inline-flex; gap: 8px; margin-left: auto; }
+.dco-input.dco-new-path { flex: none; width: 100%; margin-bottom: 6px; }
+.dco-new-home { font-family: var(--ds-font-family-code, ui-monospace, monospace); color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
 .dco-input { box-sizing: border-box; flex: 1 1 16em; min-width: 0; height: 28px; padding: 0 8px; border: none; border-radius: var(--dsw-radius-sm); background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 20px; box-shadow: inset 0 0 0 var(--dsh-hairline-width, 0.5px) var(--dsw-alias-border-l3); transition: box-shadow var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease-in-out); }
 .dco-input-mono { font-family: var(--ds-font-family-code, ui-monospace, monospace); font-size: 12px; }
 .dco-input::placeholder { color: var(--dsw-alias-label-caption); }
