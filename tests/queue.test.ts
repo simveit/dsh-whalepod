@@ -155,7 +155,7 @@ test('T1: notices delivered at the start of a turn count as Executor Session dat
   r.coordinator.append('step/start', { turn: 2, step: 1 })
   r.coordinator.append('user/message', notice.message)
   const second = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Follow-up task', assignment: 'Do the follow-up.' })
-  assert.match(JSON.stringify(second['notes']), /recorded as a coordinator notice/)
+  assert.match(JSON.stringify(second['notes']), /recorded as an Orchestrator notice/)
   const followUp = r.host.agentOf(second['sessionId'] as string).received[0]!
   assert.deepEqual([followUp.how, followUp.message.source.kind], ['steer', 'agent-message'], 'an Assignment written after the notice is a notice, not the user\'s prompt')
   r.coordinator.endTurn()
@@ -242,7 +242,7 @@ test('Q1: notices that waited through a turn the user stopped, or one that faile
     r.host.userTurn(r.coordinator, 'No. Start an executor for the docs instead.')
     const docs = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Docs task', assignment: 'Write the docs.' })
     assert.equal(docs['error'], undefined, String(docs['error']))
-    assert.doesNotMatch(JSON.stringify(docs['notes'] ?? ''), /coordinator notice|already in this turn/)
+    assert.doesNotMatch(JSON.stringify(docs['notes'] ?? ''), /Orchestrator notice|already in this turn/)
     const docsLead = r.host.agentOf(docs['sessionId'] as string)
     assert.deepEqual([docsLead.received[0]!.how, docsLead.received[0]!.message.source.kind], ['prompt', 'user'], 'the request kept the user\'s authority')
     assert.equal(r.coordinator.received.length, before, 'the notice is not part of the user\'s turn')
@@ -310,7 +310,7 @@ test('R9: a result still in the batch window when the user stops the turn counts
   // The user's next request runs without the notice and keeps the user's authority.
   r.host.userTurn(r.coordinator, 'No. Start an executor for the docs instead.')
   const docs = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Docs task', assignment: 'Write the docs.' })
-  assert.doesNotMatch(JSON.stringify(docs['notes'] ?? ''), /coordinator notice|already in this turn/)
+  assert.doesNotMatch(JSON.stringify(docs['notes'] ?? ''), /Orchestrator notice|already in this turn/)
   const docsLead = r.host.agentOf(docs['sessionId'] as string)
   assert.deepEqual([docsLead.received[0]!.how, docsLead.received[0]!.message.source.kind], ['prompt', 'user'])
   // That turn ends normally: the notice opens a turn of its own, as a blocked one does.

@@ -35,7 +35,7 @@ export interface CoordinatorSource {
   /** What the New coordinator form starts from: a suggested name, dsh's models, and the default model choices. */
   newCoordinatorSetup(signal?: AbortSignal): Promise<NewCoordinatorSetup>
   /**
-   * New coordinator; `home` from the folder picker, else the host picks `<base>/coordinator-<name>`; `name` as the user
+   * New coordinator; `home` from the folder picker, else the host picks `<base>/orchestrator-<name>`; `name` as the user
    * chose it, else the suggested name while it is free, else the host picks one from its built-in list; the two models
    * as the form's pickers showed them (`null` or left out for none). A refused name, folder or model creates nothing.
    */
@@ -107,7 +107,7 @@ function unwrap<T>(result: RemoteResult<T>): T {
 export function remoteSource(remote: () => CoordinatorRemote | undefined): CoordinatorSource {
   const get = (): CoordinatorRemote => {
     const value = remote()
-    if (value === undefined) throw new SourceError('The coordinator service is not connected.', true)
+    if (value === undefined) throw new SourceError('Whalepod is not connected.', true)
     return value
   }
   // A transport fault rejects instead of resolving to an error envelope.
@@ -202,14 +202,14 @@ export function fakeSource(): CoordinatorSource {
   const A = 'c-1a2b'
   const B = 'c-7f3e'
   const coordinators: CoordinatorInfo[] = [
-    { id: B, sessionId: 'fake-coordinator-7f3e', name: 'Feynman', title: 'Release 0.4', home: `${BASE}/coordinator-feynman`,
-      folder: `${HOME}/Library/Mobile Documents/coordinator-2`, folderProblem: 'the folder is inside ~/Library, which is refused',
+    { id: B, sessionId: 'fake-coordinator-7f3e', name: 'Feynman', title: 'Release 0.4', home: `${BASE}/orchestrator-feynman`,
+      folder: `${HOME}/Library/Mobile Documents/orchestrator-2`, folderProblem: 'the folder is inside ~/Library, which is refused',
       // An executor model that is no longer offered, so the page shows its fallback note.
       coordinatorModel: { provider: 'deepseek-account', model: 'deepseek-v4.1-pro', reasoningEffort: 'max' }, executorModel: { provider: 'signed-out', model: 'big-model' },
       memory: FAKE_MEMORY_FEYNMAN, memoryRevision: 3, memoryBy: { by: 'coordinator', at: now - 38 * min }, coordinatorMatriarc: false, executorMatriarc: true, createdAt: now - 70 * min, updatedAt: now - 6 * min },
-    { id: A, sessionId: realCoordinator ?? 'fake-coordinator-1a2b', name: 'Noether', title: 'Noether', home: `${BASE}/coordinator-noether`, folder: `${BASE}/coordinator-noether`,
+    { id: A, sessionId: realCoordinator ?? 'fake-coordinator-1a2b', name: 'Noether', title: 'Noether', home: `${BASE}/orchestrator-noether`, folder: `${BASE}/orchestrator-noether`,
       model: { ok: false, reason: 'model-unavailable', model: 'deepseek-official/deepseek-v4.1-flash' },
-      executorPrompt: 'Write tests before you change code.\nKeep commits small and explain each one in a sentence.\nAsk the coordinator before adding a dependency.',
+      executorPrompt: 'Write tests before you change code.\nKeep commits small and explain each one in a sentence.\nAsk the Orchestrator before adding a dependency.',
       memory: FAKE_MEMORY_NOETHER, memoryRevision: 7, memoryBy: { by: 'user', at: now - 3 * 60 * min }, coordinatorMatriarc: false, executorMatriarc: true, createdAt: now - 26 * 60 * min, updatedAt: now - 1 * min },
   ]
   let lastCoordinatorId: string | undefined = A
@@ -224,7 +224,7 @@ export function fakeSource(): CoordinatorSource {
       status: 'waiting-question', statusDetail: 'Should the breaking config rename go first or under "Changes"?',
       createdAt: now - 65 * min, updatedAt: now - 6 * min },
     { id: 't-5d10', coordinatorId: A, sessionId: 'fake-session-5d10', title: 'Upgrade eslint to v10 and fix the new warnings in every package', cwd: `${HOME}/dev/monorepo`,
-      status: 'idle', lastReport: { kind: 'progress', text: 'Waiting for the coordinator to confirm the rule set.', at: now - 25 * min },
+      status: 'idle', lastReport: { kind: 'progress', text: 'Waiting for the Orchestrator to confirm the rule set.', at: now - 25 * min },
       createdAt: now - 3 * 60 * min, updatedAt: now - 25 * min },
     { id: 't-a442', coordinatorId: B, sessionId: 'fake-session-a442', title: 'Summarise open issues labelled perf', cwd: `${HOME}/dev/notes`,
       status: 'done', lastReport: { kind: 'result', text: 'Wrote notes/perf-issues.md: 14 issues in 4 groups.', at: now - 50 * min },
@@ -239,11 +239,11 @@ export function fakeSource(): CoordinatorSource {
     { id: 't-77aa', coordinatorId: A, sessionId: '', title: 'Fix the build script', cwd: `${HOME}/dev/build-tools`,
       status: 'needs-user', statusDetail: `confirm folder ${HOME}/dev/build-tools`, action: { kind: 'confirm-folder', path: `${HOME}/dev/build-tools`, why: 'outside' },
       createdAt: now - 3 * min, updatedAt: now - 3 * min },
-    { id: 't-9c01', coordinatorId: B, sessionId: 'fake-session-9c01', title: 'Poll the flaky CI job', cwd: `${BASE}/coordinator-hypatia/poll-ci`,
+    { id: 't-9c01', coordinatorId: B, sessionId: 'fake-session-9c01', title: 'Poll the flaky CI job', cwd: `${BASE}/orchestrator-hypatia/poll-ci`,
       status: 'needs-user', statusDetail: 'paused after 12 wake-ups', action: { kind: 'resume', reason: 'wakes', count: 12 },
       createdAt: now - 90 * min, updatedAt: now - 4 * min },
     // A row whose coordinator record was dropped by validation: only Archive applies.
-    { id: 't-4e12', coordinatorId: '', sessionId: 'fake-session-4e12', title: 'Old experiment from a removed coordinator', cwd: `${BASE}/coordinator-noether/old-experiment`,
+    { id: 't-4e12', coordinatorId: '', sessionId: 'fake-session-4e12', title: 'Old experiment from a removed Orchestrator', cwd: `${BASE}/orchestrator-noether/old-experiment`,
       status: 'idle', createdAt: now - 5 * 24 * 60 * min, updatedAt: now - 4 * 24 * 60 * min },
   ]
   let allowed: string[] = scenario === 'readme' ? [] : [`${HOME}/dev/website`]
@@ -252,12 +252,12 @@ export function fakeSource(): CoordinatorSource {
   let refuseReopen = scenario === 'archived'
   if (scenario === 'empty') { coordinators.length = 0; threads.length = 0 }
   if (scenario === 'readme') {
-    const docs = `${BASE}/coordinator-noether`
+    const docs = `${BASE}/orchestrator-noether`
     coordinators.splice(0, coordinators.length,
-      { id: B, sessionId: 'fake-coordinator-7f3e', name: '李白', title: '李白', home: `${BASE}/coordinator-li-bai`,
-        folder: `${BASE}/coordinator-li-bai`, coordinatorMatriarc: false, executorMatriarc: true, createdAt: now - 70 * min, updatedAt: now - 6 * min },
+      { id: B, sessionId: 'fake-coordinator-7f3e', name: '李白', title: '李白', home: `${BASE}/orchestrator-li-bai`,
+        folder: `${BASE}/orchestrator-li-bai`, coordinatorMatriarc: false, executorMatriarc: true, createdAt: now - 70 * min, updatedAt: now - 6 * min },
       { id: A, sessionId: realCoordinator ?? 'fake-coordinator-1a2b', name: 'Noether', title: 'Noether', home: docs, folder: docs,
-        executorPrompt: 'Write tests before you change code.\nKeep commits small and explain each one in a sentence.\nAsk the coordinator before adding a dependency.',
+        executorPrompt: 'Write tests before you change code.\nKeep commits small and explain each one in a sentence.\nAsk the Orchestrator before adding a dependency.',
         coordinatorMatriarc: false, executorMatriarc: true, createdAt: now - 26 * 60 * min, updatedAt: now - 1 * min })
     const row = (id: string, coordinatorId: string, title: string, folder: string, over: Partial<ThreadInfo>): ThreadInfo =>
       ({ id, coordinatorId, sessionId: `fake-session-${id}`, title, cwd: `${docs}/${folder}`, status: 'idle', createdAt: now - 60 * min, updatedAt: now - 10 * min, ...over })
@@ -291,7 +291,7 @@ export function fakeSource(): CoordinatorSource {
     Object.assign(coordinators[0]!, { archived: true, chatArchived: true, sessionId: null, chat: 'archived', folderProblem: undefined })
     for (let i = threads.length - 1; i >= 0; i--) if (threads[i]!.coordinatorId === B) { archivedRows.unshift({ ...threads[i]!, status: FINISHED.includes(threads[i]!.status) ? threads[i]!.status : 'stopped', action: undefined }); threads.splice(i, 1) }
     // A coordinator that never had a chat (for example adopted from a state file without one).
-    coordinators.push({ id: 'c-0n0c', sessionId: null, name: 'Tagore', title: 'Tagore', chat: 'none', home: `${BASE}/coordinator-tagore`, folder: `${BASE}/coordinator-tagore`,
+    coordinators.push({ id: 'c-0n0c', sessionId: null, name: 'Tagore', title: 'Tagore', chat: 'none', home: `${BASE}/orchestrator-tagore`, folder: `${BASE}/orchestrator-tagore`,
       coordinatorMatriarc: false, executorMatriarc: true, createdAt: now - 10 * min, updatedAt: now - 10 * min })
   }
   if (scenario === 'readme' || scenario === 'empty') archivedRows.length = 0
@@ -302,7 +302,7 @@ export function fakeSource(): CoordinatorSource {
     at => { const t = threads.find(x => x.id === 't-81c2'); if (t) Object.assign(t, { lastReport: { kind: 'progress', text: 'Ran 6 of 8 shapes; results are within noise on long inputs.', at }, updatedAt: at }) },
     at => { if (coordinators.some(c => c.id === B && c.archived !== true)) threads.unshift({ id: 't-e9d3', coordinatorId: B, sessionId: 'fake-session-e9d3', title: 'Check licence headers in vendored code', cwd: `${HOME}/dev/monorepo/vendor`, status: 'starting', createdAt: at, updatedAt: at }) },
     at => { const t = threads.find(x => x.id === 't-e9d3'); if (t) Object.assign(t, { status: 'running', statusDetail: 'Scanning 212 files', updatedAt: at }) },
-    at => { const t = threads.find(x => x.id === 't-5d10'); if (t) Object.assign(t, { status: 'needs-user', statusDetail: 'Coordinator: two rules conflict with the style guide; pick one.', updatedAt: at }) },
+    at => { const t = threads.find(x => x.id === 't-5d10'); if (t) Object.assign(t, { status: 'needs-user', statusDetail: 'Orchestrator: two rules conflict with the style guide; pick one.', updatedAt: at }) },
     at => { const t = threads.find(x => x.id === 't-81c2'); if (t) Object.assign(t, { status: 'done', statusDetail: undefined, lastReport: { kind: 'result', text: 'No regression: new tokenizer within 1% of main on all 8 shapes.', at }, updatedAt: at }) },
     // An Executor Session updates the memory (its memory tool), so the page shows a host change to the Memory row and who made it.
     at => { const c = coordinators.find(x => x.id === A); if (c?.memory !== undefined && c.memoryOff !== true) Object.assign(c, { memory: `${c.memory}\n- tokenizer: new version is within 1% of main; no need to re-run.`, memoryRevision: (c.memoryRevision ?? 0) + 1, memoryBy: { by: 'executor', executorId: 't-81c2', executorTitle: 'Benchmark the new tokenizer against main', at }, memoryExecutors: [{ id: 't-81c2', title: 'Benchmark the new tokenizer against main' }], updatedAt: at }) },
@@ -318,7 +318,7 @@ export function fakeSource(): CoordinatorSource {
   })
   const find = (id: string): CoordinatorInfo => {
     const record = coordinators.find(c => c.id === id)
-    if (record === undefined) throw new SourceError(`Unknown coordinator ${id}`, false)
+    if (record === undefined) throw new SourceError(`Unknown Orchestrator ${id}`, false)
     return record
   }
   // Live first, newest first; archived last, as the host orders them.
@@ -336,7 +336,7 @@ export function fakeSource(): CoordinatorSource {
   const nameRefusal = (name: string, exceptId?: string): string | undefined => {
     if (name === '' || [...name].length > 40) return 'a name has 1 to 40 characters'
     if (/[\u0000-\u001f\u007f]/.test(name)) return 'a name cannot contain control characters'
-    if (coordinators.some(c => c.id !== exceptId && c.archived !== true && c.name.toLowerCase() === name.toLowerCase())) return `another coordinator is already called ${name}`
+    if (coordinators.some(c => c.id !== exceptId && c.archived !== true && c.name.toLowerCase() === name.toLowerCase())) return `another Orchestrator is already called ${name}`
     return undefined
   }
   // Like the host: a stored choice counts while its model and effort are in the list.
@@ -357,21 +357,21 @@ export function fakeSource(): CoordinatorSource {
       if (why !== undefined) throw new SourceError(why, false)
     }
     // A model the form names must be in the list; null or left out is none.
-    for (const [choice, what] of [[options.coordinatorModel, 'coordinator model'], [options.executorModel, 'executor model']] as const) {
+    for (const [choice, what] of [[options.coordinatorModel, 'Orchestrator model'], [options.executorModel, 'executor model']] as const) {
       if (choice != null && !offered(choice)) throw new SourceError(`the ${what} cannot be used: its provider does not offer this model`, false)
     }
     const coordinatorModel = options.coordinatorModel ?? undefined
     const executorModel = options.executorModel ?? undefined
     if (home !== undefined) {
       const why = refusal(home)
-      if (why !== undefined) throw new SourceError(`This folder can't be a coordinator's home: ${why}.`, false)
+      if (why !== undefined) throw new SourceError(`This folder can't be an Orchestrator's home: ${why}.`, false)
     }
     const at = Date.now()
     const id = `c-${hex()}`
     const free = freeNames()
     const name = chosen !== '' ? chosen : suggestedName !== undefined && free.includes(suggestedName) ? suggestedName
       : free.length > 0 ? free[Math.floor(Math.random() * free.length)]! : `Noether ${coordinators.length + 1}`
-    const path = home ?? `${BASE}/coordinator-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+    const path = home ?? `${BASE}/orchestrator-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
     coordinators.push({
       id, sessionId: `fake-coordinator-${id}`, name, title: name, home: path, folder: path,
       ...(coordinatorModel === undefined ? {} : { coordinatorModel: { ...coordinatorModel } }), ...(executorModel === undefined ? {} : { executorModel: { ...executorModel } }),
@@ -402,7 +402,7 @@ export function fakeSource(): CoordinatorSource {
       if (record.archived === true && refuseReopen) {
         // Once, so the refused-Reopen notice can be seen; the host refuses for example at 20 live coordinators.
         refuseReopen = false
-        throw new SourceError('at most 20 coordinators; archive another one first', false)
+        throw new SourceError('at most 20 Orchestrators; archive another one first', false)
       }
       if (record.sessionId === null || record.chatArchived === true) {
         Object.assign(record, { sessionId: `fake-coordinator-${record.id}-${hex()}`, chatArchived: undefined, archived: undefined, chat: 'open', updatedAt: Date.now() })
@@ -551,7 +551,7 @@ export function fakeSource(): CoordinatorSource {
       // The host keeps a Workspace another live coordinator shares, or one with the user's own Sessions (the legacy home here).
       const shared = coordinators.some(c => c.id !== coordinatorId && c.archived !== true && c.home === record.home)
       const workspace = !removeWorkspace ? 'not-asked' as const : shared ? 'kept-shared' as const
-        : record.home === `${BASE}/coordinator-noether` ? 'kept-has-sessions' as const : 'removed' as const
+        : record.home === `${BASE}/orchestrator-noether` ? 'kept-has-sessions' as const : 'removed' as const
       return { archived: coordinatorId, threads: own.map(t => t.id), workspace }
     },
     async archiveThread(id, signal) {
@@ -568,8 +568,8 @@ export function fakeSource(): CoordinatorSource {
       await delay(signal)
       const record = find(coordinatorId)
       // The host's checks and wording.
-      if (record.archived !== true) throw new SourceError('only an archived coordinator can be deleted; archive it first', false)
-      if (threads.some(t => t.coordinatorId === coordinatorId)) throw new SourceError('this coordinator still has live Executor Sessions; archive them first', false)
+      if (record.archived !== true) throw new SourceError('only an archived Orchestrator can be deleted; archive it first', false)
+      if (threads.some(t => t.coordinatorId === coordinatorId)) throw new SourceError('this Orchestrator still has live Executor Sessions; archive them first', false)
       coordinators.splice(coordinators.indexOf(record), 1)
       for (let i = archivedRows.length - 1; i >= 0; i--) if (archivedRows[i]!.coordinatorId === coordinatorId) archivedRows.splice(i, 1)
       revision += 1

@@ -217,7 +217,7 @@ export declare class ThreadService implements ThreadOps {
     private validateRestore;
     /**
      * The coordinator a version 1 file became no longer works at the old threads root (`~/dsh-threads`): its folder for
-     * new Executor Sessions becomes `<base>/coordinator-<slug of its name>`, like a New coordinator's, and without a chat
+     * new Executor Sessions becomes `<base>/orchestrator-<slug of its name>`, like a New coordinator's, and without a chat
      * its home moves there too. A chat of that release keeps its home (a Session's folder cannot change). Nothing is
      * created on disk now: the folder appears when the first Executor Session starts there, the home with its Workspace
      * when Reopen makes the chat (dsh registers a Workspace only for an existing folder). With a refused base the old root
@@ -646,7 +646,7 @@ export declare class ThreadService implements ThreadOps {
      */
     private reopenChat;
     /**
-     * New coordinator (design 2.2, path 1): a name, its own folder `coordinator-<name>` below the base or the folder
+     * New coordinator (design 2.2, path 1): a name, its own folder `orchestrator-<name>` below the base or the folder
      * the user picked, registered as a Workspace titled like the chat ("Coordinator <name>"), and a chat Session there on
      * `standard`, on `workspace-write`, narrowed, with the model-free opening turn.
      *
@@ -688,7 +688,7 @@ export declare class ThreadService implements ThreadOps {
     newCoordinatorSetup(): Promise<NewCoordinatorSetup>;
     private proposeSetup;
     private createOnce;
-    /** The first `<base>/coordinator-<name>`, `-2`, ... that is no registered Workspace, no non-empty folder, and allowed. */
+    /** The first `<base>/orchestrator-<name>`, `-2`, ... that is no registered Workspace, no non-empty folder, and allowed. */
     private pickHome;
     /**
      * Whether a folder is a Workspace with the user's own Sessions (unarchived, not a coordinator chat of this plugin):

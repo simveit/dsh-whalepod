@@ -554,7 +554,7 @@ test('S6: progress Reports past the limit are recorded without a notice of their
   const quiet = () => r.coordinator.received.filter(m => m.how === 'inject').length
   for (let i = 0; i < PROGRESS_NOTICES_MAX; i++) {
     const sent = await r.host.call(r.lead.id, TOOL.report, { kind: 'progress', text: `step ${i}` })
-    assert.match(String(sent['note']), /^Recorded; the coordinator sees it with the next update\./)
+    assert.match(String(sent['note']), /^Recorded; the Orchestrator sees it with the next update\./)
   }
   await tick(80)
   const before = quiet()
@@ -568,7 +568,7 @@ test('S6: progress Reports past the limit are recorded without a notice of their
   // Other kinds are not limited by it, and the window frees up.
   assert.equal((await r.host.call(r.lead.id, TOOL.report, { kind: 'question', text: 'Which port?' }))['delivered'], 'wake')
   r.host.now += PROGRESS_NOTICES_WINDOW_MS + 1
-  assert.match(String((await r.host.call(r.lead.id, TOOL.report, { kind: 'progress', text: 'later' }))['note']), /^Recorded; the coordinator sees it/)
+  assert.match(String((await r.host.call(r.lead.id, TOOL.report, { kind: 'progress', text: 'later' }))['note']), /^Recorded; the Orchestrator sees it/)
   r.host.dispose()
 })
 

@@ -41,7 +41,7 @@ test('defaults: off for the chat, on for executors; old and malformed records re
   assert.ok(!('coordinatorMatriarc' in record) && !('executorMatriarc' in record), 'defaults are not written')
   const t = await tool(r, r.coordinator)
   assert.equal(t.listed, false)
-  assert.match(t.guard ?? '', /a coordinator may not use matriarc/)
+  assert.match(t.guard ?? '', /an Orchestrator may not use matriarc/)
   assert.deepEqual(matriarcLines(r), [], 'the default chat is not switched')
   // A state file with other values than booleans reads as the defaults.
   const file = JSON.parse(readFileSync(r.stateFile, 'utf8')) as { coordinators: Record<string, unknown>[] }
@@ -88,7 +88,7 @@ test('coordinator setter: the allow list and the chat follow at once, both ways;
   assert.equal(r.coordinator.matriarc, false)
   const t = await tool(r, r.coordinator)
   assert.equal(t.listed, false)
-  assert.match(t.guard ?? '', /a coordinator may not use matriarc/)
+  assert.match(t.guard ?? '', /an Orchestrator may not use matriarc/)
   assert.deepEqual(matriarcLines(r).map(c => c.line), ['/matriarc on', '/matriarc off'])
 
   // An error result is logged; the setting is still saved and the allow list follows it.
@@ -97,7 +97,7 @@ test('coordinator setter: the allow list and the chat follow at once, both ways;
   assert.equal(r.coordinator.matriarc, false)
   assert.equal((await tool(r, r.coordinator)).listed, true)
 
-  await assert.rejects(setChat(r, 'c-none', true), /unknown coordinator/)
+  await assert.rejects(setChat(r, 'c-none', true), /unknown Orchestrator/)
   for (const enabled of [undefined, 'true', 1, null]) await assert.rejects(setChat(r, r.coordinatorId, enabled), /enabled must be true or false/)
   r.host.dispose()
 })
@@ -122,7 +122,7 @@ test('executor setter: executor_start applies the value set now; running Executo
   assert.equal(third.result['error'], undefined)
   assert.ok((third.result['notes'] as string[] | undefined)?.some(note => /Matriarc could not be switched on: no navigator/.test(note)), JSON.stringify(third.result))
 
-  assert.throws(() => setExec(r, 'c-none', true), /unknown coordinator/)
+  assert.throws(() => setExec(r, 'c-none', true), /unknown Orchestrator/)
   for (const enabled of [undefined, 'false', 0, null]) assert.throws(() => setExec(r, r.coordinatorId, enabled), /enabled must be true or false/)
   r.host.dispose()
 })

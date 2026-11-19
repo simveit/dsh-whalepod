@@ -33,7 +33,7 @@ export const COORDINATORS_MAX = 20
 export const ARCHIVED_COORDINATORS_KEEP = 20
 
 /** Language-neutral folder name of a new coordinator's home below the base, like dsh's `default-workspace`. */
-export const COORDINATOR_FOLDER = 'coordinator'
+export const COORDINATOR_FOLDER = 'orchestrator'
 /** Title of a coordinator chat and of its Workspace. */
 export const COORDINATOR_TITLE = 'Coordinator'
 /** The last two segments of dsh's default workspace path; its parent is the base for new coordinators. */
@@ -43,7 +43,7 @@ export const DEFAULT_WORKSPACE_TAIL = ['deepseek-harness', 'default-workspace'] 
  * Built-in coordinator names: philosophers, scientists, mathematicians, novelists and poets, about a third each
  * English-speaking, German-speaking and Chinese, and a few from elsewhere; women and men. Chinese names are written in
  * Chinese characters in every locale. Each entry has a lowercase ASCII slug (pinyin with hyphens for Chinese names)
- * for the folder of a new coordinator (`coordinator-li-bai`). A new coordinator gets a random unused one (`freeName`).
+ * for the folder of a new coordinator (`orchestrator-li-bai`). A new coordinator gets a random unused one (`freeName`).
  */
 export const COORDINATOR_NAMES: readonly { readonly name: string; readonly slug: string }[] = [
   // English-speaking
@@ -209,8 +209,8 @@ export function nameSlug(name: string): string {
 }
 
 /**
- * The folder of a new coordinator's home: `coordinator-<slug>` (`coordinator-li-bai`), `-2`, `-3`, ... when that folder
- * is taken (n from 1); plain `coordinator`, `coordinator-2`, ... for a name without a slug.
+ * The folder of a new coordinator's home: `orchestrator-<slug>` (`orchestrator-li-bai`), `-2`, `-3`, ... when that folder
+ * is taken (n from 1); plain `orchestrator`, `orchestrator-2`, ... for a name without a slug.
  */
 export function coordinatorFolderName(name: string, n = 1): string {
   const slug = nameSlug(name)
@@ -354,7 +354,7 @@ export interface CoordinatorConfig {
    */
   threadsRoot: string
   /**
-   * Where new coordinators get their own folder (`<base>/coordinator`, `coordinator-2`, ...). Undefined: next to
+   * Where new coordinators get their own folder (`<base>/orchestrator`, `orchestrator-2`, ...). Undefined: next to
    * dsh's default workspace (see discoverBase).
    */
   coordinatorBase?: string

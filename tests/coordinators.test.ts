@@ -48,10 +48,10 @@ test('a New Session in a coordinator Workspace is narrowed from its first step a
   // Before any message: role prompt, narrowing and the state-folder guard; the tools are listed (dsh composes the first
   // turn's list before it logs the typed message) but a call runs only after a typed message promoted it (S4).
   assert.ok(r.host.toolsFor(blank.id).includes(TOOL.start))
-  assert.match(String((await r.host.call(blank.id, TOOL.start, { title: 'x', assignment: 'y' }))['error']), /not a coordinator yet/)
+  assert.match(String((await r.host.call(blank.id, TOOL.start, { title: 'x', assignment: 'y' }))['error']), /not an Orchestrator yet/)
   assert.match(r.host.sections[0]!.text({ agent: { id: blank.id } }), /^COORD PROMPT\n\n## Permission mode/)
   assert.ok(blank.restriction !== undefined && !blank.visibleTools().includes('bash'))
-  assert.match(await r.host.policy(blank, 'read', { file_path: r.stateFile }) ?? '', /the coordinator may not access the coordinator plugin's own state folder/)
+  assert.match(await r.host.policy(blank, 'read', { file_path: r.stateFile }) ?? '', /the Orchestrator may not access Whalepod's own state folder/)
   assert.equal(await r.host.policy(blank, 'read', { file_path: join(r.dir, 'dsh-home', 'skills', 'review', 'SKILL.md') }), undefined)
   const mark = blank.received.find(m => m.message.id.startsWith('dsh-coordinator:role:c-'))
   assert.ok(mark !== undefined, 'role mark injected')
@@ -100,7 +100,7 @@ test('the first Assignment of an adopted coordinator keeps the user\'s authority
   const started = await startIn(r, blank, 'First task')
   const turn = blank.log.slice(blank.log.findLastIndex(e => e.type === 'turn/start'))
   assert.ok(turn.some(e => e.type === 'user/message' && (e.data as { id?: string }).id?.startsWith('dsh-coordinator:role:')), 'mark logged in the turn')
-  assert.ok(!((started['notes'] as string[] | undefined) ?? []).some(n => /coordinator notice/.test(n)), 'no demotion note')
+  assert.ok(!((started['notes'] as string[] | undefined) ?? []).some(n => /Orchestrator notice/.test(n)), 'no demotion note')
   await tick(5)
   const lead = r.host.agentOf(started['sessionId'] as string)
   assert.equal(lead.received[0]?.how, 'prompt', 'the Assignment is recorded as the user\'s prompt')
@@ -159,13 +159,13 @@ test('adoption skips a Session with turns (fenced instead), a subagent, a thread
   assert.equal(r.service.getState().coordinators.length, 1)
   // S12: the plain Session with a history in the coordinator home is fenced: narrowed to reading, guarded.
   assert.ok(plain.restriction !== undefined && !plain.visibleTools().includes('bash'))
-  assert.match(await r.host.policy(plain, 'bash', { command: 'ls' }) ?? '', /is no coordinator, so it may only read and search/)
-  assert.match(r.host.sections[0]!.text({ agent: { id: plain.id } }), /^## Not a coordinator/)
+  assert.match(await r.host.policy(plain, 'bash', { command: 'ls' }) ?? '', /is no Orchestrator, so it may only read and search/)
+  assert.match(r.host.sections[0]!.text({ agent: { id: plain.id } }), /^## Not an Orchestrator/)
   // S4: a tool call never promotes a candidate.
   const blank = r.host.newSession(r.root)
   await tick(5)
-  assert.match(String((await r.host.call(blank.id, TOOL.list, {}))['error']), /not a coordinator yet/)
-  await assert.rejects(r.service.startThread(blank.id, { title: 'x', brief: 'y' }, new AbortController().signal), /not a coordinator/)
+  assert.match(String((await r.host.call(blank.id, TOOL.list, {}))['error']), /not an Orchestrator yet/)
+  await assert.rejects(r.service.startThread(blank.id, { title: 'x', brief: 'y' }, new AbortController().signal), /not an Orchestrator/)
   assert.equal(r.service.getState().coordinators.length, 1)
   r.host.dispose()
 })
@@ -175,21 +175,21 @@ test('New coordinator gets its own folder below the base, titled in turn; a pick
   const base = join(r.home, 'Documents', 'deepseek-harness')
   assert.equal(r.service.getState().base?.path, base)
   const first = await r.service.createCoordinator()
-  mkdirSync(join(base, 'coordinator-turing'), { recursive: true })
-  writeFileSync(join(base, 'coordinator-turing', 'keep.txt'), 'the user\'s file')
+  mkdirSync(join(base, 'orchestrator-turing'), { recursive: true })
+  writeFileSync(join(base, 'orchestrator-turing', 'keep.txt'), 'the user\'s file')
   const second = await r.service.createCoordinator({})
   const third = await r.service.createCoordinator()
   const byId = new Map(r.service.getState().coordinators.map(c => [c.id, c]))
   // Each gets a free name; its home folder is named after it.
   assert.deepEqual([first, second, third].map(c => byId.get(c.coordinatorId)!.name), ['Darwin', 'Austen', 'Turing'])
-  assert.equal(byId.get(first.coordinatorId)!.home, join(base, 'coordinator-darwin'))
-  assert.equal(byId.get(second.coordinatorId)!.home, join(base, 'coordinator-austen'))
-  assert.equal(byId.get(third.coordinatorId)!.home, join(base, 'coordinator-turing-2'), 'a non-empty folder is skipped')
+  assert.equal(byId.get(first.coordinatorId)!.home, join(base, 'orchestrator-darwin'))
+  assert.equal(byId.get(second.coordinatorId)!.home, join(base, 'orchestrator-austen'))
+  assert.equal(byId.get(third.coordinatorId)!.home, join(base, 'orchestrator-turing-2'), 'a non-empty folder is skipped')
   assert.deepEqual([first, second, third].map(c => byId.get(c.coordinatorId)!.title), ['Darwin', 'Austen', 'Turing'])
   assert.deepEqual(r.host.workspaces.map(w => w.title), ['Newton', 'Darwin', 'Austen', 'Turing'])
   // Each chat sits in its home and is narrowed; its opening message carries its id.
   const chat = r.host.agentOf(first.sessionId)
-  assert.equal(chat.session.header.cwd, join(base, 'coordinator-darwin'))
+  assert.equal(chat.session.header.cwd, join(base, 'orchestrator-darwin'))
   assert.ok(chat.received.some(m => m.message.id.startsWith(`dsh-coordinator:opening:${first.coordinatorId}:`)))
   assert.ok(!chat.visibleTools().includes('bash'))
   // A picked folder that is a Workspace with the user's own sessions is refused; an empty one is fine.
@@ -198,7 +198,7 @@ test('New coordinator gets its own folder below the base, titled in turn; a pick
   await (r.host.ctx['workspaceRegistry'] as { create: (p: string) => Promise<unknown> }).create(project)
   plainSession(r.host, project)
   await assert.rejects(r.service.createCoordinator({ home: project }), /workspace with your own sessions/)
-  await assert.rejects(r.service.createCoordinator({ home: join(r.home, '.config') }), /cannot be a coordinator's home/)
+  await assert.rejects(r.service.createCoordinator({ home: join(r.home, '.config') }), /cannot be an Orchestrator's home/)
   // A picked or typed folder that does not exist yet (dsh's resolveByPath rejects a missing path).
   const picked = await r.service.createCoordinator({ home: join(r.home, 'dev', 'empty') })
   assert.equal(r.service.getState().coordinators.find(c => c.id === picked.coordinatorId)!.home, join(r.home, 'dev', 'empty'))
@@ -220,7 +220,7 @@ test('base discovery: next to a registered dsh default workspace, else ~/Documen
   const base = join(r.home, 'Docs', 'deepseek-harness')
   assert.equal(r.service.getState().base?.path, base)
   const made = await r.service.ensureCoordinator()
-  assert.equal(r.host.agentOf(made.sessionId).session.header.cwd, join(base, 'coordinator-newton'))
+  assert.equal(r.host.agentOf(made.sessionId).session.header.cwd, join(base, 'orchestrator-newton'))
   r.host.dispose()
   const configured = rig('base-config', { config: { coordinatorBase: '/var/coordinators-xyz' } })
   await configured.service.ready
@@ -286,7 +286,7 @@ test('a folder change applies to new threads only; an existing folder below the 
   // A folder a thread works in, the home folder, or a coordinator home cannot become a folder.
   assert.throws(() => r.service.setCoordinatorFolder({ coordinatorId: r.bId, path: join(work, 'late-work', 'x') }), /inside the folder of a delegated session/)
   assert.throws(() => r.service.setCoordinatorFolder({ coordinatorId: r.bId, path: r.home }), /home folder/)
-  assert.throws(() => r.service.setCoordinatorFolder({ coordinatorId: 'c-0000', path: work }), /unknown coordinator/)
+  assert.throws(() => r.service.setCoordinatorFolder({ coordinatorId: 'c-0000', path: work }), /unknown Orchestrator/)
   r.host.dispose()
 })
 
@@ -296,14 +296,14 @@ test('a thread is never created in a coordinator home, nor in a folder above one
   r.host.userTurn(r.a, `Work in ${bHome} or in ${join(r.home, 'Documents')}`)
   for (const cwd of [bHome, join(r.home, 'Documents')]) {
     const result = await r.host.call(r.a.id, TOOL.start, { title: 'Into a home', brief: 'b', cwd })
-    assert.match(String(result['error']), /coordinator's own folder or contains one/, cwd)
+    assert.match(String(result['error']), /Orchestrator's own folder or contains one/, cwd)
   }
   // S9: A's folder may not contain B's home, nor lie inside it.
-  assert.throws(() => r.service.setCoordinatorFolder({ coordinatorId: r.aId, path: join(r.home, 'Documents', 'deepseek-harness') }), /contains another coordinator's home/)
-  assert.throws(() => r.service.setCoordinatorFolder({ coordinatorId: r.aId, path: join(bHome, 'inside') }), /inside another coordinator's home/)
+  assert.throws(() => r.service.setCoordinatorFolder({ coordinatorId: r.aId, path: join(r.home, 'Documents', 'deepseek-harness') }), /contains another Orchestrator's home/)
+  assert.throws(() => r.service.setCoordinatorFolder({ coordinatorId: r.aId, path: join(bHome, 'inside') }), /inside another Orchestrator's home/)
   // S6: an executor may not carry a coordinator's title.
   const named = await startIn(r, r.a, 'Coordinator')
-  assert.match(String(named['error']), /not look like a coordinator's title/)
+  assert.match(String(named['error']), /not look like an Orchestrator's title/)
   r.host.dispose()
 })
 
@@ -390,7 +390,7 @@ test(`at most ${COORDINATORS_MAX} live coordinators: New coordinator and adoptio
   const r = await withCoordinator('cap')
   for (let i = 1; i < COORDINATORS_MAX; i++) await r.service.createCoordinator()
   assert.equal(r.service.getState().coordinators.length, COORDINATORS_MAX)
-  await assert.rejects(r.service.createCoordinator(), /at most 20 coordinators/)
+  await assert.rejects(r.service.createCoordinator(), /at most 20 Orchestrators/)
   assert.match(r.service.getState().base?.problem ?? '', /at most 20/)
   const blank = r.host.newSession(r.root)
   await tick(5)

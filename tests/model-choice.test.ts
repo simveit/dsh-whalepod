@@ -121,8 +121,8 @@ test('both setters refuse what dsh does not offer, and store nothing', async () 
   ]
   for (const set of ['setCoordinatorModel', 'setExecutorModel'] as const) {
     for (const [model, why] of bad) await assert.rejects(r.service[set]({ coordinatorId: r.coordinatorId, model }), why, `${set} ${JSON.stringify(model)}`)
-    await assert.rejects(r.service[set]({ coordinatorId: 'c-0000', model: FLASH }), /unknown coordinator/)
-    await assert.rejects(r.service[set]({ model: FLASH }), /unknown coordinator/)
+    await assert.rejects(r.service[set]({ coordinatorId: 'c-0000', model: FLASH }), /unknown Orchestrator/)
+    await assert.rejects(r.service[set]({ model: FLASH }), /unknown Orchestrator/)
   }
   // A provider whose list fails: refused, and the provider's own error text (it names an address) is not passed on.
   r.host.providers = r.host.providers.map(p => (p.id === 'opencode-go' ? { ...p, broken: true } : p))
@@ -194,7 +194,7 @@ test('a stored model dsh no longer offers is kept, is not used, and is used agai
   const { lead, result } = await start(again, r.coordinator, 'With a model that is gone')
   assert.deepEqual(lead.model.current(), FLASH)
   assert.ok(!lead.selects.some(s => s.provider === 'signed-out'), 'a model dsh does not offer is never selected')
-  assert.match((result['notes'] as string[]).join('\n'), /the model the user set for this coordinator's Executor Sessions is not available any more/)
+  assert.match((result['notes'] as string[]).join('\n'), /the model the user set for this Orchestrator's Executor Sessions is not available any more/)
 
   again.host.providers = [...again.host.providers, { id: 'signed-out', models: [{ id: 'big' }] }]
   assert.deepEqual((await again.service.modelChoices({ coordinatorId: r.coordinatorId })).executors, { stored: gone, effective: gone, available: true })
@@ -290,7 +290,7 @@ test('R2: an executors\' model that dsh cannot be asked about starts nothing: no
   r.host.userTurn(r.coordinator, 'Please do: While the list fails')
   const refused = await r.host.call(r.coordinator.id, TOOL.start, { title: 'While the list fails', assignment: 'Do it.' })
   r.coordinator.endTurn()
-  assert.match(String(refused['error']), /could not start the Executor Session: dsh could not check the model the user set for this coordinator's Executor Sessions just now, and no other model is used in its place\. Call executor_start again in a moment/)
+  assert.match(String(refused['error']), /could not start the Executor Session: dsh could not check the model the user set for this Orchestrator's Executor Sessions just now, and no other model is used in its place\. Call executor_start again in a moment/)
   assert.doesNotMatch(JSON.stringify(refused), /kimi|deepseek|opencode|provider\.invalid/i, 'the refusal names no model and no address')
   assert.deepEqual([r.host.creates, r.host.workspaces.length, r.service.listThreads().length], [creates, groups, 0], 'no Session, no group and no row were made')
   // The page says the same: nothing applies, and it is not "gone".
@@ -451,7 +451,7 @@ test('R4: a chat that is replaced while setCoordinatorModel waits for its Agent 
   await r.service.archiveCoordinator({ coordinatorId: second.coordinatorId })
   r.service.deleteCoordinator({ coordinatorId: second.coordinatorId })
   free()
-  await assert.rejects(late, /unknown coordinator/)
+  await assert.rejects(late, /unknown Orchestrator/)
   assert.equal(r.host.agentOf(second.sessionId).selects.length, 0)
   r.host.dispose()
 })
@@ -550,8 +550,8 @@ test('modelChoices lists dsh\'s providers, models and efforts, and what each set
   assert.deepEqual(oneBroken.groups[0]!.models.map(m => [m.id, m.efforts?.length]), [['deepseek-flash', 2], ['deepseek-pro', undefined]])
   assert.equal(oneBroken.partial, true)
   assert.doesNotMatch(JSON.stringify(oneBroken), /provider\.invalid/)
-  await assert.rejects(r.service.modelChoices({ coordinatorId: 'c-0000' }), /unknown coordinator/)
-  await assert.rejects(r.service.modelChoices({}), /unknown coordinator/)
+  await assert.rejects(r.service.modelChoices({ coordinatorId: 'c-0000' }), /unknown Orchestrator/)
+  await assert.rejects(r.service.modelChoices({}), /unknown Orchestrator/)
   r.host.services.delete('llm')
   assert.deepEqual((await r.service.modelChoices({ coordinatorId: r.coordinatorId })).groups, [])
   r.host.dispose()

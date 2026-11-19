@@ -78,7 +78,7 @@ test('a version 1 file upgrades with every row, the allowed folders and the perm
   // under the base, made only when the first one starts there.
   assert.equal(coord.home, r.root)
   const base = join(r.home, 'Documents', 'deepseek-harness')
-  assert.equal(coord.folder, join(base, 'coordinator-newton'))
+  assert.equal(coord.folder, join(base, 'orchestrator-newton'))
   assert.equal(existsSync(coord.folder), false, 'not created on load')
   // Names arrived after version 1: the migrated coordinator gets one, and its plugin title becomes its name.
   assert.equal(coord.name, 'Newton')
@@ -141,8 +141,8 @@ test('a version 1 file without a coordinator but with threads keeps them under o
   assert.equal(coord.chatArchived, true)
   // Without a chat, home and folder are a new plugin folder under the base (not created yet); rows keep their owner.
   const base = join(r.home, 'Documents', 'deepseek-harness')
-  assert.equal(coord.home, join(base, 'coordinator-newton'))
-  assert.equal(coord.folder, join(base, 'coordinator-newton'))
+  assert.equal(coord.home, join(base, 'orchestrator-newton'))
+  assert.equal(coord.folder, join(base, 'orchestrator-newton'))
   assert.equal(existsSync(coord.home), false)
   assert.deepEqual(again.service.getState().threads.map(t => t.coordinatorId), [coord.id, coord.id])
   // A thread's report waits for the chat.
@@ -152,7 +152,7 @@ test('a version 1 file without a coordinator but with threads keeps them under o
   assert.equal(opened.coordinatorId, coord.id)
   await tick(10)
   const chat = again.host.agentOf(opened.sessionId)
-  assert.equal(chat.session.header.cwd, join(base, 'coordinator-newton'), 'Reopen makes the chat in the new home')
+  assert.equal(chat.session.header.cwd, join(base, 'orchestrator-newton'), 'Reopen makes the chat in the new home')
   assert.match(chat.received.map(m => m.message.content.map(c => c.text).join('')).join('\n'), /done meanwhile/)
   assert.deepEqual(again.service.listThreads(chat.id).map(t => t.id).sort(), ['t-aaaa', 't-cccc'])
   again.host.dispose()
@@ -165,7 +165,7 @@ test('a version 1 file without a coordinator but with threads keeps them under o
   await third.service.ready
   const kept = third.service.getState().coordinators[0]!
   assert.equal(kept.id, coord.id)
-  assert.equal(kept.home, join(base, 'coordinator-newton'))
+  assert.equal(kept.home, join(base, 'orchestrator-newton'))
   assert.deepEqual(third.service.getState().threads.map(t => t.coordinatorId), [coord.id, coord.id])
   assert.equal(third.service.getState().problems?.find(p => p.kind === 'state-dropped'), undefined)
   third.host.dispose()
@@ -254,9 +254,9 @@ test('T8: a tampered version 2 file cannot make a thread, a Session outside its 
   assert.match(dropped, /c-0a01 \(its Session is a delegated session\)/)
   assert.match(dropped, /c-0a02 \(its Session is not in its home\)/)
   assert.match(dropped, /c-0a03 \(its Session carries no mark of this plugin/)
-  assert.match(dropped, /c-0a04 \(its Session belongs to another coordinator\)/)
+  assert.match(dropped, /c-0a04 \(its Session belongs to another Orchestrator\)/)
   assert.match(dropped, /c-0a05 \(its Session does not exist\)/)
-  assert.match(dropped, /c-0a06 \(its home is not a coordinator Workspace\)/)
+  assert.match(dropped, /c-0a06 \(its home is not an Orchestrator Workspace\)/)
   for (const id of [started['sessionId'] as string, mine, unmarked.id]) assert.ok(!again.host.toolsFor(id).includes(TOOL.start), id)
   assert.ok(again.host.toolsFor(pending.id).includes(TOOL.start))
   assert.ok(pending.received.filter(m => m.message.id === `dsh-coordinator:role:${adopted.id}`).length >= 1, 'the mark is written again')
@@ -281,7 +281,7 @@ test('a coordinator whose stored folder is refused keeps its chat, but starts no
   assert.match(info.folderProblem ?? '', /system folder/)
   again.host.userTurn(again.host.agentOf(made.sessionId), 'go')
   const refused = await again.host.call(made.sessionId, TOOL.start, { title: 'Nope', brief: 'b' })
-  assert.match(String(refused['error']), /folder is refused .* change it on the Coordinator page/)
+  assert.match(String(refused['error']), /folder is refused .* change it on the Orchestrator page/)
   assert.match(again.host.sections[0]!.text({ agent: { id: made.sessionId } }), /is refused/)
   again.service.setCoordinatorFolder({ coordinatorId: made.coordinatorId, path: join(r.home, 'fresh') })
   const ok = await again.host.call(made.sessionId, TOOL.start, { title: 'Now', brief: 'b' })

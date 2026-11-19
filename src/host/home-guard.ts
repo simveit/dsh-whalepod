@@ -693,20 +693,20 @@ const STATE_FOLDER_WORDS = '`storages/dsh-coordinator` in the dsh home'
 /** The model-facing error of a denial. */
 export function denialReason(denial: GuardDenial, role: 'coordinator' | 'thread'): string {
   if (denial.kind === 'too-large') {
-    return `this call carries more arguments than the host reads when it checks a call for the coordinator plugin's own state folder (${denial.match}), so it is refused unread; split it into smaller calls. The plugin closes nothing else in the dsh home`
+    return `this call carries more arguments than the host reads when it checks a call for Whalepod's own state folder (${denial.match}), so it is refused unread; split it into smaller calls. The plugin closes nothing else in the dsh home`
   }
   if (denial.kind === 'bad-path') {
-    return `this call names ${denial.match}. No file has such a path, and the host cannot check it against the coordinator plugin's own state folder, so the call is refused; pass the plain path of the file or folder. The plugin closes nothing else in the dsh home`
+    return `this call names ${denial.match}. No file has such a path, and the host cannot check it against Whalepod's own state folder, so the call is refused; pass the plain path of the file or folder. The plugin closes nothing else in the dsh home`
   }
   if (denial.above === true) {
     return denial.cwd === true
-      ? `this search has no path, and the Session's working directory is above the coordinator plugin's own state folder (${STATE_FOLDER_WORDS}), so it would read it; pass the path of a narrower folder. The plugin closes nothing else in the dsh home`
-      : `this search starts above the coordinator plugin's own state folder (${STATE_FOLDER_WORDS}) and would read it; search a narrower folder. The plugin closes nothing else in the dsh home`
+      ? `this search has no path, and the Session's working directory is above Whalepod's own state folder (${STATE_FOLDER_WORDS}), so it would read it; pass the path of a narrower folder. The plugin closes nothing else in the dsh home`
+      : `this search starts above Whalepod's own state folder (${STATE_FOLDER_WORDS}) and would read it; search a narrower folder. The plugin closes nothing else in the dsh home`
   }
   if (denial.cwd === true) {
-    return `the Session's working directory is inside the coordinator plugin's own state folder (${STATE_FOLDER_WORDS}), where no agent may work; change it back to the Session's own folder with working_directory. The plugin closes nothing else in the dsh home`
+    return `the Session's working directory is inside Whalepod's own state folder (${STATE_FOLDER_WORDS}), where no agent may work; change it back to the Session's own folder with working_directory. The plugin closes nothing else in the dsh home`
   }
   return role === 'coordinator'
-    ? `the coordinator may not access the coordinator plugin's own state folder (${STATE_FOLDER_WORDS}); ask the user. The plugin closes nothing else in the dsh home`
-    : `Executor Session agents may not access the coordinator plugin's own state folder (${STATE_FOLDER_WORDS}); ask the coordinator or the user. The plugin closes nothing else in the dsh home`
+    ? `the Orchestrator may not access Whalepod's own state folder (${STATE_FOLDER_WORDS}); ask the user. The plugin closes nothing else in the dsh home`
+    : `Executor Session agents may not access Whalepod's own state folder (${STATE_FOLDER_WORDS}); ask the Orchestrator or the user. The plugin closes nothing else in the dsh home`
 }

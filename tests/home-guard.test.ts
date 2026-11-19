@@ -156,8 +156,8 @@ test('G4: a search without a path is checked against the working directory; insi
     // Text-only tools never touch files.
     assert.equal(at([CWD, cwd], 'todo_write', { todos: [{ content: 'x', status: 'pending' }] }), undefined)
   }
-  assert.match(denialReason({ kind: 'plugin-state', match: 'x', above: true, cwd: true }, 'thread'), /^this search has no path, and the Session's working directory is above the coordinator plugin's own state folder .*pass the path of a narrower folder/)
-  assert.match(denialReason({ kind: 'plugin-state', match: 'x', cwd: true }, 'thread'), /^the Session's working directory is inside the coordinator plugin's own state folder .*working_directory/)
+  assert.match(denialReason({ kind: 'plugin-state', match: 'x', above: true, cwd: true }, 'thread'), /^this search has no path, and the Session's working directory is above Whalepod's own state folder .*pass the path of a narrower folder/)
+  assert.match(denialReason({ kind: 'plugin-state', match: 'x', cwd: true }, 'thread'), /^the Session's working directory is inside Whalepod's own state folder .*working_directory/)
 })
 
 test('F1 and F2: only `path` roots a search, and a value is read as written, with `~` replaced, and as a `file:` URL', () => {
@@ -442,9 +442,9 @@ test('textMatch: boundaries, and the refusal names only the plugin\'s state', ()
     denialReason({ kind: 'plugin-state', match: 'x' }, 'coordinator'),
     denialReason({ kind: 'plugin-state', match: 'x', above: true }, 'coordinator'),
   ]
-  assert.match(reasons[0]!, /^Executor Session agents may not access the coordinator plugin's own state folder .*ask the coordinator or the user/)
-  assert.match(reasons[1]!, /^the coordinator may not access the coordinator plugin's own state folder .*ask the user/)
-  assert.match(reasons[2]!, /^this search starts above the coordinator plugin's own state folder .*search a narrower folder/)
+  assert.match(reasons[0]!, /^Executor Session agents may not access Whalepod's own state folder .*ask the Orchestrator or the user/)
+  assert.match(reasons[1]!, /^the Orchestrator may not access Whalepod's own state folder .*ask the user/)
+  assert.match(reasons[2]!, /^this search starts above Whalepod's own state folder .*search a narrower folder/)
   for (const reason of reasons) {
     assert.match(reason, /`storages\/dsh-coordinator` in the dsh home/)
     assert.match(reason, /The plugin closes nothing else in the dsh home$/)

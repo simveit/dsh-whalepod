@@ -42,8 +42,8 @@ export declare function isToolName(name: string, key: ToolKey): boolean;
 export declare function allSpellings(keys: readonly ToolKey[]): string[];
 /** Role nouns used in the prompts. */
 export declare const ROLE: {
-    readonly coordinator: "coordinator";
-    readonly Coordinator: "Coordinator";
+    readonly coordinator: "Orchestrator";
+    readonly Coordinator: "Orchestrator";
     readonly executor: "executor";
     readonly executorSession: "Executor Session";
     readonly executorSessions: "Executor Sessions";

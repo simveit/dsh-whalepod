@@ -196,7 +196,7 @@ const STATUS_TEXT: Partial<Record<ThreadStatus, string>> = {
 
 const REPORT_TEXT = {
   progress: 'progress',
-  question: 'question for the coordinator',
+  question: 'question for the Orchestrator',
   result: 'result',
   blocked: 'blocked',
 } as const
@@ -348,7 +348,7 @@ export function threadWhat(notices: readonly Notice[]): string {
   else if (isLookIn(notices)) what = notices.some(n => n.lookIn?.notStarted === true) ? 'has not started its turn yet (your look-in)' : 'is still working (your look-in)'
   else if (status === 'waiting-approval') what = 'waits for your approval'
   else if (status === 'waiting-question') what = 'has a question for you'
-  else if (reports.has('question')) what = 'asks the coordinator a question'
+  else if (reports.has('question')) what = 'asks the Orchestrator a question'
   else if (reports.has('blocked')) what = 'is blocked'
   else if (status === 'failed') what = 'failed'
   else if (reports.has('result')) what = 'reported a result'

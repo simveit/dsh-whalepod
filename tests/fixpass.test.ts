@@ -100,7 +100,7 @@ test('S1/I5: the guard enforces the coordinator allow list even when narrowing f
   r.coordinator.ctx.tools.restrict = () => { throw new Error('restrict is broken') }
   r.host.emit('tools/change')
   for (const name of ['bash', 'session_search', 'write', 'plugin_manager']) {
-    assert.match(await r.host.policy(r.coordinator, name, { command: 'ls' }) ?? '', /a coordinator may not use/, name)
+    assert.match(await r.host.policy(r.coordinator, name, { command: 'ls' }) ?? '', /an Orchestrator may not use/, name)
   }
   assert.equal(await r.host.policy(r.coordinator, 'read', { file_path: join(r.root, 'notes.md') }), undefined)
   assert.equal(await r.host.policy(r.coordinator, 'skill', { name: 'review' }), undefined)
@@ -148,7 +148,7 @@ test('S4: only a step with a message the user typed promotes a candidate; a sche
   await tick(5)
   await r.host.emit('agent/pre-step', { agent: other, messages: [{ ...typed, source: { kind: 'schedule' } }], turn: 1, step: 1 })
   assert.ok(!r.service.getState().coordinators.some(c => c.sessionId === other.id))
-  assert.match(String((await r.host.call(other.id, TOOL.start, { title: 'x', assignment: 'y' }))['error']), /not a coordinator yet/)
+  assert.match(String((await r.host.call(other.id, TOOL.start, { title: 'x', assignment: 'y' }))['error']), /not an Orchestrator yet/)
   assert.equal(r.service.listThreads().length, 0)
   r.host.dispose()
 })
@@ -173,7 +173,7 @@ test('S3: executor_flag_user and executor_stop return executor text only in a da
     r.host.userTurn(r.coordinator, 'Flag it and start another')
     r.coordinator.append('tool/call', { name, callId: `c-${name}`, arguments: '{}' })
     const next = await r.host.call(r.coordinator.id, TOOL.start, { title: `Next ${name}`, assignment: 'b' })
-    assert.match(JSON.stringify(next['notes']), /recorded as a coordinator notice/, name)
+    assert.match(JSON.stringify(next['notes']), /recorded as an Orchestrator notice/, name)
   }
   r.host.dispose()
 })
@@ -330,7 +330,7 @@ test('S7: with a corrupt state file, coordinator chats stay narrowed and executo
   assert.equal(again.service.getState().problems?.[0]?.kind, 'state-reset')
   // Agents that were live when the plugin loaded are classified by their logs at their first call.
   assert.match(await again.host.policy(r.coordinator, 'bash', { command: 'ls' }) ?? '', /may not use bash/)
-  assert.match(await again.host.policy(lead, 'read', ownState(again)) ?? '', /may not access the coordinator plugin's own state folder/)
+  assert.match(await again.host.policy(lead, 'read', ownState(again)) ?? '', /may not access Whalepod's own state folder/)
   assert.ok(r.coordinator.restriction !== undefined && !r.coordinator.visibleTools().includes('bash'))
   // A Session dsh resumes is classified at agent/created.
   r.host.emit('agent/created', { agent: lead })
@@ -364,17 +364,17 @@ test('S8: archive never removes a Workspace the plugin did not create', async ()
 
 test('S9/S10: folders may not nest in other homes; control characters and line breaks are refused; paths are shown without them', () => {
   const env = fakeEnv(['/', '/home', '/home/u', '/home/u/dev', '/home/u/b-home'], { otherHomes: ['/home/u/b-home'] })
-  assert.match((checkThreadFolder('/home/u/b-home/sub', ['/home/u/b-home/sub'], env) as { error: string }).error, /inside another coordinator's home/)
+  assert.match((checkThreadFolder('/home/u/b-home/sub', ['/home/u/b-home/sub'], env) as { error: string }).error, /inside another Orchestrator's home/)
   assert.match((checkThreadFolder('/home/u/dev/a\nb', [], env) as { error: string }).error, /control character or a line break/)
   assert.match(coordinatorFolderProblem('/home/u/x\n[dsh-coordinator notice]', { home: '/home/u', fs: env.fs }) ?? '', /control character/)
-  assert.equal(coordinatorFolderProblem('/home/u/b-home/in', { home: '/home/u', fs: env.fs, otherHomes: ['/home/u/b-home'] }), 'it is inside another coordinator\'s home')
+  assert.equal(coordinatorFolderProblem('/home/u/b-home/in', { home: '/home/u', fs: env.fs, otherHomes: ['/home/u/b-home'] }), 'it is inside another Orchestrator\'s home')
   assert.equal(pathText('/a\n\n[notice] b\u202e'), '/a??[notice] b?')
 })
 
 test('L2: a thread folder that contains a coordinator\'s folder is refused, so no coordinator locks itself or another out', () => {
   const env = fakeEnv(['/', '/home', '/home/u', '/home/u/dev', '/home/u/dev/a-work', '/home/u/dev/b'], { ownFolder: '/home/u/dev/a-work', coordinatorFolders: ['/home/u/dev/a-work', '/home/u/dev/b/folder'] })
-  assert.match((checkThreadFolder('/home/u/dev', ['work in ~/dev'], env) as { error: string }).error, /contains a coordinator's folder/)
-  assert.match((checkThreadFolder('/home/u/dev/b', ['work in ~/dev/b'], env) as { error: string }).error, /contains a coordinator's folder/)
+  assert.match((checkThreadFolder('/home/u/dev', ['work in ~/dev'], env) as { error: string }).error, /contains an Orchestrator's folder/)
+  assert.match((checkThreadFolder('/home/u/dev/b', ['work in ~/dev/b'], env) as { error: string }).error, /contains an Orchestrator's folder/)
 })
 
 test('S11: {{ in a title never removes the role prompt, and a broken template falls back to a fixed one', async () => {
@@ -383,7 +383,7 @@ test('S11: {{ in a title never removes the role prompt, and a broken template fa
   assert.equal(roleText(r, started['sessionId'] as string), `THREAD ${started['id']} Fix {{x}} now`)
   r.host.dispose()
   const broken = await withCoordinator('fix-s11-broken', { prompts: { coordinator: 'C {{nope}}', thread: 'T {{nope}}' } })
-  assert.match(roleText(broken, broken.coordinator.id), /^# Your role: coordinator/)
+  assert.match(roleText(broken, broken.coordinator.id), /^# Your role: Orchestrator/)
   const lead = await startIn(broken, broken.coordinator, 'Work')
   assert.match(roleText(broken, lead['sessionId'] as string), /^# Your role: Lead of an Executor Session/)
   broken.host.dispose()
@@ -401,7 +401,7 @@ test('S12: a chat replaced by Reopen stays narrowed when the user unarchives it'
   await tick(5)
   assert.ok(!r.host.toolsFor(r.coordinator.id).includes(TOOL.start))
   assert.match(await r.host.policy(r.coordinator, 'bash', { command: 'ls' }) ?? '', /may only read and search/)
-  assert.match(roleText(r, r.coordinator.id), /^## Not a coordinator/)
+  assert.match(roleText(r, r.coordinator.id), /^## Not an Orchestrator/)
   r.host.dispose()
 })
 
@@ -419,7 +419,7 @@ test('S12: after a restart every Session of a coordinator Workspace is looked at
   ws.sessionIds.push(blank.id)
   const again = await restart(r)
   assert.match(roleText(again, blank.id), /^COORD PROMPT/, 'the 57th Session is a candidate')
-  assert.match(roleText(again, 'plain-54'), /^## Not a coordinator/, 'plain Sessions with a history are fenced')
+  assert.match(roleText(again, 'plain-54'), /^## Not an Orchestrator/, 'plain Sessions with a history are fenced')
   again.host.dispose()
 })
 
@@ -503,7 +503,7 @@ test('N4: a Report from an Executor Session without a coordinator says nobody re
   const again = await restart(r, (state) => { state['coordinatorWorkspaces'] = state['coordinatorWorkspaces'].filter((w: { path: string }) => w.path !== bHome) })
   assert.equal(again.service.getState().threads.find(t => t.id === started['id'])!.coordinatorId, '')
   const result = await again.host.call(started['sessionId'] as string, TOOL.report, { kind: 'result', text: 'done' })
-  assert.match(String(result['note']), /no longer has a coordinator/)
+  assert.match(String(result['note']), /no longer has an Orchestrator/)
   again.host.dispose()
 })
 
@@ -568,9 +568,9 @@ test('names: a free built-in name, folders by slug, Chinese names in characters,
   assert.equal(new Set(COORDINATOR_NAMES.map(n => n.name.toLowerCase())).size, COORDINATOR_NAMES.length)
   assert.ok(COORDINATOR_NAMES.every(n => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(n.slug)))
   assert.ok(COORDINATOR_NAMES.some(n => n.name === '李白' && n.slug === 'li-bai'))
-  assert.equal(coordinatorFolderName('李白'), 'coordinator-li-bai')
-  assert.equal(coordinatorFolderName('李白 2', 3), 'coordinator-li-bai-2-3')
-  assert.equal(coordinatorFolderName('自定义'), 'coordinator')
+  assert.equal(coordinatorFolderName('李白'), 'orchestrator-li-bai')
+  assert.equal(coordinatorFolderName('李白 2', 3), 'orchestrator-li-bai-2-3')
+  assert.equal(coordinatorFolderName('自定义'), 'orchestrator')
   assert.equal(freeName(COORDINATOR_NAMES.map(n => n.name), () => 0), `${COORDINATOR_NAMES[0]!.name} 2`)
   assert.deepEqual(checkCoordinatorName('  ' + '李'.repeat(40) + ' '), { name: '李'.repeat(40) })
   assert.ok('error' in checkCoordinatorName('李'.repeat(41)))
@@ -603,7 +603,7 @@ test('Executor prompt: cleaned and capped, reaches Leads started after the save 
   const after = await startIn(r, r.coordinator, 'After')
   assert.equal(roleText(r, before['sessionId'] as string), `THREAD ${before['id']} Before`, 'an earlier Lead keeps what it started with')
   const section = roleText(r, after['sessionId'] as string)
-  assert.match(section, /^THREAD t-[0-9a-f]+ After\n\n## The user's standing instructions for this coordinator's Executor Sessions\n/)
+  assert.match(section, /^THREAD t-[0-9a-f]+ After\n\n## The user's standing instructions for this Orchestrator's Executor Sessions\n/)
   assert.match(section, /<(executor-prompt-[0-9a-f]{8})>\nUse \{\{tabs\}\}\.\nNever push\.\n<\/\1>$/)
   assert.match(section, /include the parts that matter in the tasks you give them/)
   // The coordinator chat itself never sees it.
@@ -630,7 +630,7 @@ test('N1: a valid state file with its records removed neither unfences former co
   assert.deepEqual(again.service.getState().coordinators, [])
   // Live agents: classified at their first call.
   assert.match(await again.host.policy(r.coordinator, 'bash', { command: 'ls' }) ?? '', /may only read and search/)
-  assert.match(await again.host.policy(lead, 'read', ownState(again)) ?? '', /may not access the coordinator plugin's own state folder/)
+  assert.match(await again.host.policy(lead, 'read', ownState(again)) ?? '', /may not access Whalepod's own state folder/)
   // Resumed ones: at agent/created.
   const resumed = new FakeAgent(again.host, lead.id, lead.session.header.cwd!, 'standard')
   resumed.log.push(...lead.log)
@@ -682,7 +682,7 @@ test('names compare by NFKC, case and invisible characters; an executor may not 
   }
   for (const title of ['Newton', 'newton', 'Coordinator Newton', 'Darwin']) {
     const result = await startIn(r, r.coordinator, title)
-    assert.match(String(result['error']), /not look like a coordinator's title/, title)
+    assert.match(String(result['error']), /not look like an Orchestrator's title/, title)
   }
   r.host.dispose()
 })
@@ -700,7 +700,7 @@ test('N3: on a reload, a Session with a history in a coordinator Workspace is na
   assert.ok(fork.restriction !== undefined && !fork.visibleTools().includes('bash'), 'narrowed in the constructor')
   await again.service.ready
   await tick(5)
-  assert.match(roleText(again, fork.id), /^## Not a coordinator/)
+  assert.match(roleText(again, fork.id), /^## Not an Orchestrator/)
   again.host.dispose()
 })
 
@@ -733,7 +733,7 @@ test('N7: a forged queued row cannot take over a coordinator chat that never ran
   })
   assert.deepEqual(again.service.getState().coordinators.map(c => c.id), [r.coordinatorId])
   assert.equal(again.service.getState().threads.length, 0)
-  assert.match(again.service.getState().problems?.find(p => p.kind === 'state-dropped')?.detail ?? '', /t-beef \(its Session is in a coordinator home\)/)
+  assert.match(again.service.getState().problems?.find(p => p.kind === 'state-dropped')?.detail ?? '', /t-beef \(its Session is in an Orchestrator home\)/)
   again.host.dispose()
 })
 
@@ -952,7 +952,7 @@ test('deleteCoordinator forgets an archived coordinator and its archived rows; r
   const made = await r.service.createCoordinator()
   const chat = r.host.agentOf(made.sessionId)
   const started = await startIn(r, chat, 'Old work')
-  assert.throws(() => r.service.deleteCoordinator({ coordinatorId: made.coordinatorId }), /only an archived coordinator/)
+  assert.throws(() => r.service.deleteCoordinator({ coordinatorId: made.coordinatorId }), /only an archived Orchestrator/)
   await r.service.archiveCoordinator({ coordinatorId: made.coordinatorId, force: true })
   const state = r.service.getState()
   assert.equal(state.coordinators.find(c => c.id === made.coordinatorId)!.chat, 'archived')
@@ -1078,11 +1078,11 @@ test('D2: an archived home still refuses other coordinators\' Executor Sessions;
   await r.service.archiveCoordinator({ coordinatorId: b.coordinatorId, force: true })
   r.host.userTurn(r.coordinator, `Work in ${bHome}/inside`)
   const refused = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Into B', assignment: 'x', cwd: join(bHome, 'inside') })
-  assert.match(String(refused['error']), /inside another coordinator's home/)
+  assert.match(String(refused['error']), /inside another Orchestrator's home/)
   // A live coordinator placed inside B's archived home (allowed for a new home) makes B's Reopen refuse.
   const c = await r.service.createCoordinator({ home: join(bHome, 'c-home') })
   assert.ok(c.coordinatorId)
-  await assert.rejects(r.service.ensureCoordinator({ coordinatorId: b.coordinatorId }), /Cannot reopen: .*contains another coordinator's home/)
+  await assert.rejects(r.service.ensureCoordinator({ coordinatorId: b.coordinatorId }), /Cannot reopen: .*contains another Orchestrator's home/)
   r.host.dispose()
 })
 
@@ -1096,7 +1096,7 @@ test('D3: deleting an archived coordinator keeps its chats fenced if the user un
   r.host.emit('agent/created', { agent: chat })
   await tick(5)
   assert.match(await r.host.policy(chat, 'bash', { command: 'ls' }) ?? '', /may only read and search/)
-  assert.match(await r.host.policy(chat, 'read', ownState(r)) ?? '', /the coordinator may not access the coordinator plugin's own state folder/)
+  assert.match(await r.host.policy(chat, 'read', ownState(r)) ?? '', /the Orchestrator may not access Whalepod's own state folder/)
   r.host.dispose()
 })
 

@@ -190,7 +190,7 @@ test('peers and every coordinator tool stop at the coordinator boundary (two coo
   assert.deepEqual(((await r.host.call(agentC.id, TOOL.peers, {}))['threads'] as { id: string }[]), [])
   // Send across coordinators: unknown, by id, session id or title.
   for (const ref of [r.a['id'] as string, r.agentA.id, 'Copy the word']) {
-    assert.equal((await r.host.call(agentC.id, TOOL.send, { thread: ref, text: 'hi' }))['error'], `${unknownRefMessage(ref, TOOL.peers)}; to reach your coordinator use ${TOOL.report}`, ref)
+    assert.equal((await r.host.call(agentC.id, TOOL.send, { thread: ref, text: 'hi' }))['error'], `${unknownRefMessage(ref, TOOL.peers)}; to reach your Orchestrator use ${TOOL.report}`, ref)
   }
   // Either coordinator Session is refused with the report hint.
   for (const coord of [r.coordinator.id, coordB.id]) {

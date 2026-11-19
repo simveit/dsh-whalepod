@@ -323,7 +323,7 @@ export interface EnsureCoordinatorResult {
 }
 /**
  * Request of `coordinator/createCoordinator`, as the New coordinator form sends it. `home` from the folder picker, else
- * `<base>/coordinator-<name>`. `name` as the user typed it (checked like a rename); without one, `suggestedName`, the
+ * `<base>/orchestrator-<name>`. `name` as the user typed it (checked like a rename); without one, `suggestedName`, the
  * name the form showed as its suggestion (`NewCoordinatorSetup.name`), while that is still free, else another free
  * name from the built-in list. `coordinatorModel` and `executorModel` are what the form's pickers showed: a model from
  * `NewCoordinatorSetup.groups`, or `null` or left out for none ("Not set", "Same as coordinator"). The host adds no

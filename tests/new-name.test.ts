@@ -25,7 +25,7 @@ test('T4: a chosen name is used for the coordinator, its chat, its group and its
   const r = await withCoordinator('new-name-custom')
   const made = await r.service.createCoordinator({ name: 'Research desk' })
   const info = infoOf(r, made.coordinatorId)
-  assert.deepEqual([info.name, info.title, info.home, info.folder], ['Research desk', 'Research desk', join(base(r), 'coordinator-research-desk'), join(base(r), 'coordinator-research-desk')])
+  assert.deepEqual([info.name, info.title, info.home, info.folder], ['Research desk', 'Research desk', join(base(r), 'orchestrator-research-desk'), join(base(r), 'orchestrator-research-desk')])
   assert.equal(r.host.agentOf(made.sessionId).title, 'Research desk')
   assert.equal(r.host.workspaces.find(w => w.path === info.home)?.title, 'Research desk')
   assert.equal(r.host.agentOf(made.sessionId).session.header.cwd, info.home)
@@ -34,9 +34,9 @@ test('T4: a chosen name is used for the coordinator, its chat, its group and its
   assert.equal(infoOf(r, cleaned.coordinatorId).name, 'Operations')
   // A name without Latin letters gets the plain folder name; a name on the built-in list gets that entry's slug.
   const cjk = await r.service.createCoordinator({ name: '研究组' })
-  assert.deepEqual([infoOf(r, cjk.coordinatorId).name, infoOf(r, cjk.coordinatorId).home], ['研究组', join(base(r), 'coordinator')])
+  assert.deepEqual([infoOf(r, cjk.coordinatorId).name, infoOf(r, cjk.coordinatorId).home], ['研究组', join(base(r), 'orchestrator')])
   const listed = await r.service.createCoordinator({ name: '李白' })
-  assert.equal(infoOf(r, listed.coordinatorId).home, join(base(r), 'coordinator-li-bai'))
+  assert.equal(infoOf(r, listed.coordinatorId).home, join(base(r), 'orchestrator-li-bai'))
   // With a folder the user picked, the name is theirs and the folder stays the picked one.
   const picked = await r.service.createCoordinator({ home: join(r.home, 'dev', 'docs'), name: 'Docs' })
   assert.deepEqual([infoOf(r, picked.coordinatorId).name, infoOf(r, picked.coordinatorId).home], ['Docs', join(r.home, 'dev', 'docs')])
@@ -52,7 +52,7 @@ test('T4: no name, or an empty one, keeps the automatic name from the built-in l
     const made = await (r.service.createCoordinator as (q?: unknown) => Promise<{ coordinatorId: string; sessionId: string }>)(request)
     const info = infoOf(r, made.coordinatorId)
     assert.ok(listed.has(info.name!), `${JSON.stringify(request)} got the automatic name ${info.name}`)
-    assert.match(info.home, /coordinator-[a-z-]+$/)
+    assert.match(info.home, /orchestrator-[a-z-]+$/)
   }
   const names = r.service.getState().coordinators.map(c => c.name)
   assert.equal(new Set(names).size, names.length, 'each automatic name is free')
@@ -65,10 +65,10 @@ test('T4: a name another live coordinator has is refused and nothing is created;
   const before = footprint(r)
   // Compared like a rename: case, width and invisible characters fold.
   for (const name of ['Atlas', 'atlas', 'ＡＴＬＡＳ', 'At­las', ' Atlas ']) {
-    await assert.rejects(r.service.createCoordinator({ name }), /another coordinator is already called/, name)
+    await assert.rejects(r.service.createCoordinator({ name }), /another Orchestrator is already called/, name)
   }
   // The name of the coordinator the rig made, an automatic one, is taken too.
-  await assert.rejects(r.service.createCoordinator({ name: infoOf(r, r.coordinatorId).name! }), /another coordinator is already called/)
+  await assert.rejects(r.service.createCoordinator({ name: infoOf(r, r.coordinatorId).name! }), /another Orchestrator is already called/)
   assert.deepEqual(footprint(r), before, 'no record, no Workspace, no Session and no folder')
   // Two creations with the same name at once: they run one after the other, so exactly one passes.
   const both = await Promise.allSettled([r.service.createCoordinator({ name: 'Borealis' }), r.service.createCoordinator({ name: 'borealis' })])
@@ -151,7 +151,7 @@ test('T4: the client spec carries the optional name; the quick check allows an e
   const source = fakeSource()
   const made = await source.createCoordinator({ name: ' Atlas ' })
   assert.equal((await source.getState()).coordinators.find(c => c.id === made.coordinatorId)?.name, 'Atlas')
-  await assert.rejects(source.createCoordinator({ name: 'atlas' }), /another coordinator is already called/)
+  await assert.rejects(source.createCoordinator({ name: 'atlas' }), /another Orchestrator is already called/)
   const auto = await source.createCoordinator({ name: '  ' })
   assert.notEqual((await source.getState()).coordinators.find(c => c.id === auto.coordinatorId)?.name, '')
 })
@@ -163,7 +163,7 @@ test('T4: when no folder is free below the base, the refusal names the reason an
   const before = footprint(r)
   for (const request of [{}, { name: 'Research Desk' }]) {
     await assert.rejects(r.service.createCoordinator(request), (error: Error) => {
-      assert.match(error.message, /^no free folder for a new coordinator under ~\/Documents\/deepseek-harness: a new folder there is refused \(it is inside another coordinator's home\)\. Give it a folder yourself with Choose folder or Type a path$/)
+      assert.match(error.message, /^no free folder for a new Orchestrator under ~\/Documents\/deepseek-harness: a new folder there is refused \(it is inside another Orchestrator's home\)\. Give it a folder yourself with Choose folder or Type a path$/)
       return true
     })
   }

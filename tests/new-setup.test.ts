@@ -234,7 +234,7 @@ test('T8: Create with an empty name uses the suggested name; taken meanwhile, an
   const fromForm = await create(r, { suggestedName: setup.name })
   const made = infoOf(r, fromForm.coordinatorId)
   const entry = COORDINATOR_NAMES.find(e => e.name === setup.name)!
-  assert.deepEqual([made.name, made.title, made.home], [setup.name, setup.name, join(base(r), `coordinator-${entry.slug}`)])
+  assert.deepEqual([made.name, made.title, made.home], [setup.name, setup.name, join(base(r), `orchestrator-${entry.slug}`)])
   assert.equal(r.host.agentOf(fromForm.sessionId).title, setup.name)
   assert.equal(stored(r).find(c => c.id === fromForm.coordinatorId)!.name, setup.name)
 
@@ -253,7 +253,7 @@ test('T8: Create with an empty name uses the suggested name; taken meanwhile, an
   // A typed name wins over the suggestion, and keeps the checks of a typed name.
   const fourth = await r.service.newCoordinatorSetup()
   assert.equal(infoOf(r, (await create(r, { name: 'Atlas', suggestedName: fourth.name })).coordinatorId).name, 'Atlas')
-  await assert.rejects(create(r, { name: 'atlas', suggestedName: fourth.name }), /another coordinator is already called/)
+  await assert.rejects(create(r, { name: 'atlas', suggestedName: fourth.name }), /another Orchestrator is already called/)
   await assert.rejects(create(r, { name: '2026', suggestedName: fourth.name }), /only a number/)
   // An empty or blank typed name with a suggestion is the suggestion.
   assert.equal(infoOf(r, (await create(r, { name: '  ', suggestedName: fourth.name })).coordinatorId).name, fourth.name)
@@ -304,7 +304,7 @@ test('T8: a suggested name whose default folder already exists on disk gets the 
   const names = COORDINATOR_NAMES.filter(e => e.slug !== '')
   const [withFiles, emptyOne, taken2] = [names[0]!, names[1]!, names[2]!]
   // Left over from an earlier coordinator that is no longer in the state: a folder with files in it.
-  const old = join(base(r), `coordinator-${withFiles.slug}`)
+  const old = join(base(r), `orchestrator-${withFiles.slug}`)
   mkdirSync(old, { recursive: true })
   writeFileSync(join(old, 'notes.md'), 'keep me')
   // The name is free in the state, so it is still suggested and accepted.
@@ -314,15 +314,15 @@ test('T8: a suggested name whose default folder already exists on disk gets the 
   assert.deepEqual([readdirSync(old), readFileSync(join(old, 'notes.md'), 'utf8'), readdirSync(`${old}-2`)], [['notes.md'], 'keep me', []], 'nothing is written into the old folder')
   assert.equal(r.host.workspaces.some(w => w.path === old), false, 'the old folder is not registered as a Workspace')
   // -2 is in use as well: -3.
-  mkdirSync(join(base(r), `coordinator-${taken2.slug}`, 'sub'), { recursive: true })
-  mkdirSync(join(base(r), `coordinator-${taken2.slug}-2`, 'sub'), { recursive: true })
-  assert.equal(infoOf(r, (await create(r, { suggestedName: taken2.name })).coordinatorId).home, join(base(r), `coordinator-${taken2.slug}-3`))
+  mkdirSync(join(base(r), `orchestrator-${taken2.slug}`, 'sub'), { recursive: true })
+  mkdirSync(join(base(r), `orchestrator-${taken2.slug}-2`, 'sub'), { recursive: true })
+  assert.equal(infoOf(r, (await create(r, { suggestedName: taken2.name })).coordinatorId).home, join(base(r), `orchestrator-${taken2.slug}-3`))
   // An empty left-over folder has nothing to protect: it is used as it is.
-  mkdirSync(join(base(r), `coordinator-${emptyOne.slug}`), { recursive: true })
-  assert.equal(infoOf(r, (await create(r, { suggestedName: emptyOne.name })).coordinatorId).home, join(base(r), `coordinator-${emptyOne.slug}`))
+  mkdirSync(join(base(r), `orchestrator-${emptyOne.slug}`), { recursive: true })
+  assert.equal(infoOf(r, (await create(r, { suggestedName: emptyOne.name })).coordinatorId).home, join(base(r), `orchestrator-${emptyOne.slug}`))
   // The same for a typed name and for a creation without the form.
-  mkdirSync(join(base(r), 'coordinator-atlas', 'sub'), { recursive: true })
-  assert.equal(infoOf(r, (await create(r, { name: 'Atlas' })).coordinatorId).home, join(base(r), 'coordinator-atlas-2'))
+  mkdirSync(join(base(r), 'orchestrator-atlas', 'sub'), { recursive: true })
+  assert.equal(infoOf(r, (await create(r, { name: 'Atlas' })).coordinatorId).home, join(base(r), 'orchestrator-atlas-2'))
   r.host.dispose()
 })
 
@@ -386,14 +386,14 @@ test('T8: a model the host refuses creates nothing, whatever else the request sa
     [0, /must be null or name/],
   ]
   for (const [model, why] of bad) {
-    await assert.rejects(create(r, { coordinatorModel: model, executorModel: GO_HIGH }), (error: Error) => { assert.match(error.message, why); assert.match(error.message, /coordinator ?[mM]odel/); return true }, JSON.stringify(model))
+    await assert.rejects(create(r, { coordinatorModel: model, executorModel: GO_HIGH }), (error: Error) => { assert.match(error.message, why); assert.match(error.message, /coordinatorModel|Orchestrator model/); return true }, JSON.stringify(model))
     await assert.rejects(create(r, { coordinatorModel: GO_LOW, executorModel: model }), (error: Error) => { assert.match(error.message, why); assert.match(error.message, /executor ?[mM]odel/); return true }, JSON.stringify(model))
     // A good name and a good folder do not help.
     await assert.rejects(create(r, { home: folder, name: 'Atlas', suggestedName: 'Kant', coordinatorModel: GO_LOW, executorModel: model }), why)
   }
   // The other way round: good models, a refused name or folder.
   await assert.rejects(create(r, { name: '2026', coordinatorModel: GO_LOW, executorModel: GO_HIGH }), /only a number/)
-  await assert.rejects(create(r, { home: r.home, coordinatorModel: GO_LOW, executorModel: GO_HIGH }), /cannot be a coordinator's home/)
+  await assert.rejects(create(r, { home: r.home, coordinatorModel: GO_LOW, executorModel: GO_HIGH }), /cannot be an Orchestrator's home/)
   // A provider whose list fails: refused without the provider's own error text.
   r.host.providers = r.host.providers.map(p => (p.id === 'opencode-go' ? { ...p, broken: true } : p))
   await assert.rejects(create(r, { coordinatorModel: OWN_LOW, executorModel: GO_HIGH }), (error: Error) => {
@@ -403,7 +403,7 @@ test('T8: a model the host refuses creates nothing, whatever else the request sa
   })
   // Without dsh's provider registry nothing can be checked, so no model is accepted; a creation without models still works.
   r.host.services.delete('llm')
-  await assert.rejects(create(r, { coordinatorModel: OWN_LOW, executorModel: null }), /the coordinator model cannot be used: the model list of dsh is not available/)
+  await assert.rejects(create(r, { coordinatorModel: OWN_LOW, executorModel: null }), /the Orchestrator model cannot be used: the model list of dsh is not available/)
   assert.equal(existsSync(folder), false)
   assert.deepEqual(footprint(r), before, 'no record, no Workspace, no Session and no folder')
   const plain = await create(r, { coordinatorModel: null, executorModel: null })
@@ -601,6 +601,18 @@ test('T8: the fake source of development builds follows the host', async () => {
   const bare = await source.createCoordinator({})
   const bareInfo = (await source.getState()).coordinators.find(c => c.id === bare.coordinatorId)!
   assert.deepEqual([bareInfo.coordinatorModel, bareInfo.executorModel], [undefined, undefined])
-  await assert.rejects(source.createCoordinator({ coordinatorModel: { provider: 'nobody', model: 'big' } }), /the coordinator model cannot be used/)
+  await assert.rejects(source.createCoordinator({ coordinatorModel: { provider: 'nobody', model: 'big' } }), /the Orchestrator model cannot be used/)
   await assert.rejects(source.createCoordinator({ executorModel: { provider: 'opencode-go', model: 'glm-5.3', reasoningEffort: 'high' } }), /the executor model cannot be used/)
+})
+
+test('a new Orchestrator gets a `orchestrator-<slug>` folder; a `coordinator-<slug>` folder of an earlier release neither blocks it nor is touched', async () => {
+  const r = await fresh('setup-folder-prefix')
+  const entry = COORDINATOR_NAMES.filter(e => e.slug !== '')[3]!
+  const old = join(base(r), `coordinator-${entry.slug}`)
+  mkdirSync(old, { recursive: true })
+  writeFileSync(join(old, 'notes.md'), 'keep me')
+  const made = infoOf(r, (await create(r, { suggestedName: entry.name })).coordinatorId)
+  assert.deepEqual([made.home, made.folder], [join(base(r), `orchestrator-${entry.slug}`), join(base(r), `orchestrator-${entry.slug}`)])
+  assert.deepEqual([readdirSync(old), readFileSync(join(old, 'notes.md'), 'utf8')], [['notes.md'], 'keep me'])
+  r.host.dispose()
 })

@@ -138,7 +138,7 @@ test('H1: a tampered state file cannot make a victim Session a thread or the coo
   assert.equal(r.service.listThreads().length, 0)
   assert.equal(victim.received.length, 0, 'no prompt delivered')
   assert.deepEqual(r.host.toolsFor(victim.id), [])
-  assert.match(r.service.getState().problems?.find(p => p.kind === 'state-dropped')?.detail ?? '', /Executor Session t-evil \(its Session carries no brief of this plugin\).*coordinator c-[0-9a-f]+ \(its Session is (not in its home|a delegated session)\)/)
+  assert.match(r.service.getState().problems?.find(p => p.kind === 'state-dropped')?.detail ?? '', /Executor Session t-evil \(its Session carries no brief of this plugin\).*Orchestrator c-[0-9a-f]+ \(its Session is (not in its home|a delegated session)\)/)
   assert.deepEqual(r.service.getState().allowedFolders, [], 'refused allowed folders are dropped')
   r.host.dispose()
 })
@@ -187,9 +187,9 @@ test('G1: coordinator, Lead and Teammate are refused the plugin\'s state folder;
   mkdirSync(join(dshHome, 'storages', 'other-plugin'), { recursive: true })
   const member = r.host.addMember(r.lead, 'helper')
   const roles = [
-    { who: 'coordinator', agent: r.coordinator, cwd: r.root, refused: /^the coordinator may not access the coordinator plugin's own state folder/ },
-    { who: 'Lead', agent: r.lead, cwd: r.lead.session.header.cwd!, refused: /^Executor Session agents may not access the coordinator plugin's own state folder/ },
-    { who: 'Teammate', agent: member, cwd: r.lead.session.header.cwd!, refused: /^Executor Session agents may not access the coordinator plugin's own state folder/ },
+    { who: 'coordinator', agent: r.coordinator, cwd: r.root, refused: /^the Orchestrator may not access Whalepod's own state folder/ },
+    { who: 'Lead', agent: r.lead, cwd: r.lead.session.header.cwd!, refused: /^Executor Session agents may not access Whalepod's own state folder/ },
+    { who: 'Teammate', agent: member, cwd: r.lead.session.header.cwd!, refused: /^Executor Session agents may not access Whalepod's own state folder/ },
   ]
   for (const { who, agent, cwd, refused } of roles) {
     // Symlinks inside the agent's own folder: into the state folder, and to a sibling of it.
@@ -208,12 +208,12 @@ test('G1: coordinator, Lead and Teammate are refused the plugin\'s state folder;
     assert.match(await r.host.policy(agent, 'grep', { pattern: 'memory', path: inHome }) ?? '', refused, who)
     assert.match(await r.host.policy(agent, 'grep', { pattern: 'memory', path: `beside-${who}/../dsh-coordinator` }) ?? '', refused, `${who}: a symlink and ..`)
     for (const [tool, path] of [['glob', dshHome], ['grep', join(dshHome, 'storages')], ['glob', r.dir], ['grep', `${cwd}/beside-${who}/..`]] as const) {
-      assert.match(await r.host.policy(agent, tool, { pattern: 'x', path }) ?? '', /^this search starts above the coordinator plugin's own state folder .*search a narrower folder/, `${who} ${tool} ${path}`)
+      assert.match(await r.host.policy(agent, tool, { pattern: 'x', path }) ?? '', /^this search starts above Whalepod's own state folder .*search a narrower folder/, `${who} ${tool} ${path}`)
     }
     if (who === 'coordinator') {
       // A coordinator has no tool that writes or runs anything; the allow list answers first.
-      assert.match(await r.host.policy(agent, 'write', { file_path: r.stateFile, content: '{}' }) ?? '', /a coordinator may not use write/)
-      assert.match(await r.host.policy(agent, 'bash', { command: 'ls "$DSH_HOME/skills"', description: 'x' }) ?? '', /a coordinator may not use bash/)
+      assert.match(await r.host.policy(agent, 'write', { file_path: r.stateFile, content: '{}' }) ?? '', /an Orchestrator may not use write/)
+      assert.match(await r.host.policy(agent, 'bash', { command: 'ls "$DSH_HOME/skills"', description: 'x' }) ?? '', /an Orchestrator may not use bash/)
     } else {
       assert.match(await r.host.policy(agent, 'write', { file_path: r.stateFile, content: '{}' }) ?? '', refused, who)
       assert.match(await r.host.policy(agent, 'edit', { file_path: join(inHome, 'state.json'), old_string: 'a', new_string: 'b' }) ?? '', refused, who)
@@ -262,7 +262,7 @@ test('G1: coordinator, Lead and Teammate are refused the plugin\'s state folder;
   assert.match(await r.host.policy(member, 'plugin_manager', { action: 'install', name: 'x' }) ?? '', /may not install or manage plugins/)
   assert.equal(await r.host.policy(r.host.agentOf(other.sessionId), 'plugin_manager', { action: 'list' }), undefined)
   await tick(60)
-  const alerts = wakes(r.coordinator).filter(w => /tried 3 times to reach the coordinator plugin's own state folder/.test(w))
+  const alerts = wakes(r.coordinator).filter(w => /tried 3 times to reach Whalepod's own state folder/.test(w))
   assert.equal(alerts.length, 1)
   r.host.dispose()
 })
@@ -280,7 +280,7 @@ test('G1 review: padding, patches, the working directory and a second name of th
   // subagent's start `cwd` set. The header cwd stays where the Session began.
   const effective = new Map<string, string>()
   r.host.services.set('workingDirectory', { get: (session: { id: string }) => effective.get(session.id) ?? r.host.agentOf(session.id).session.header.cwd })
-  const state = /may not access the coordinator plugin's own state folder/
+  const state = /may not access Whalepod's own state folder/
   const pad = Array.from({ length: 501 }, (_, i) => `p${i}`)
   // An oversized call is refused unread. It is no attempt on the folder, so it does not count towards the notice
   // the coordinator gets after three attempts.
@@ -304,7 +304,7 @@ test('G1 review: padding, patches, the working directory and a second name of th
     // G1: the same folder under the macOS data-volume alias.
     if (aliased) {
       assert.match(await r.host.policy(agent, 'read', { file_path: join(alias, 'state.json') }) ?? '', state, who)
-      assert.match(await r.host.policy(agent, 'grep', { pattern: 'x', path: `/System/Volumes/Data${storages}` }) ?? '', /^this search starts above the coordinator plugin's own state folder/, who)
+      assert.match(await r.host.policy(agent, 'grep', { pattern: 'x', path: `/System/Volumes/Data${storages}` }) ?? '', /^this search starts above Whalepod's own state folder/, who)
       assert.equal(await r.host.policy(agent, 'read', { file_path: `/System/Volumes/Data${join(dshHome, 'skills', 'review', 'SKILL.md')}` }), undefined, who)
     }
     // G4: a search without a path looks at the working directory.
@@ -312,21 +312,21 @@ test('G1 review: padding, patches, the working directory and a second name of th
     for (const above of [storages, dshHome, join(cwd, `st-${who}`)]) {
       effective.set(agent.id, above)
       for (const tool of ['grep', 'glob']) {
-        assert.match(await r.host.policy(agent, tool, { pattern: 'executorPrompt' }) ?? '', /^this search has no path, and the Session's working directory is above the coordinator plugin's own state folder .*pass the path of a narrower folder/, `${who} ${tool} in ${above}`)
+        assert.match(await r.host.policy(agent, tool, { pattern: 'executorPrompt' }) ?? '', /^this search has no path, and the Session's working directory is above Whalepod's own state folder .*pass the path of a narrower folder/, `${who} ${tool} in ${above}`)
       }
       assert.match(await r.host.policy(agent, 'read', { file_path: above === dshHome ? 'storages/dsh-coordinator/notes.md' : 'dsh-coordinator/notes.md' }) ?? '', state, `${who}: a relative name from ${above}`)
       assert.equal(await r.host.policy(agent, 'read', { file_path: above === dshHome ? 'skills/review/SKILL.md' : '../skills/review/SKILL.md' }), undefined, `${who}: a relative name from ${above}`)
       assert.equal(await r.host.policy(agent, 'grep', { pattern: 'x', path: join(dshHome, 'skills') }), undefined, `${who}: a narrower path from ${above}`)
     }
     effective.set(agent.id, inHome)
-    assert.match(await r.host.policy(agent, 'grep', { pattern: 'x' }) ?? '', /^the Session's working directory is inside the coordinator plugin's own state folder/, who)
-    assert.match(await r.host.policy(agent, 'read', { file_path: join(cwd, 'notes.md') }) ?? '', /^the Session's working directory is inside the coordinator plugin's own state folder/, who)
+    assert.match(await r.host.policy(agent, 'grep', { pattern: 'x' }) ?? '', /^the Session's working directory is inside Whalepod's own state folder/, who)
+    assert.match(await r.host.policy(agent, 'read', { file_path: join(cwd, 'notes.md') }) ?? '', /^the Session's working directory is inside Whalepod's own state folder/, who)
     effective.delete(agent.id)
     if (who === 'coordinator') {
       // A coordinator cannot change its working directory or patch anything: the allow list answers first.
-      assert.match(await r.host.policy(agent, 'working_directory', { cd: storages }) ?? '', /a coordinator may not use working_directory/)
-      assert.match(await r.host.policy(agent, 'apply_patch', { input: '*** Begin Patch\n*** End Patch' }) ?? '', /a coordinator may not use apply_patch/)
-      assert.match(await r.host.policy(agent, 'subagent', { cwd: storages, description: 'd', name: 'n', prompt: 'p' }) ?? '', /a coordinator may not use subagent/)
+      assert.match(await r.host.policy(agent, 'working_directory', { cd: storages }) ?? '', /an Orchestrator may not use working_directory/)
+      assert.match(await r.host.policy(agent, 'apply_patch', { input: '*** Begin Patch\n*** End Patch' }) ?? '', /an Orchestrator may not use apply_patch/)
+      assert.match(await r.host.policy(agent, 'subagent', { cwd: storages, description: 'd', name: 'n', prompt: 'p' }) ?? '', /an Orchestrator may not use subagent/)
       continue
     }
     // G4: entering the folder, by `working_directory` (dsh's key is `cd`) or as a subagent's start directory.
@@ -348,7 +348,7 @@ test('G1 review: padding, patches, the working directory and a second name of th
   effective.set(child.id, storages)
   assert.match(await r.host.policy(child, 'grep', { pattern: 'executorPrompt' }) ?? '', /^this search has no path/)
   await tick(60)
-  assert.equal(wakes(r.coordinator).filter(w => /tried 3 times to reach the coordinator plugin's own state folder/.test(w)).length, 1)
+  assert.equal(wakes(r.coordinator).filter(w => /tried 3 times to reach Whalepod's own state folder/.test(w)).length, 1)
   r.host.dispose()
 })
 
@@ -369,7 +369,7 @@ test('G6: a skill loaded while the project has a skills folder of its own lowers
     return { notes: JSON.stringify(result['notes'] ?? []), as: brief.how === 'prompt' && brief.message.source.kind === 'user' ? 'user' : 'notice' }
   }
   // H4: the note names the folder that caused it, under its name in the project.
-  const loweredBy = (...folders: string[]) => `a skill was loaded in this turn while this project has a skills folder of its own (${folders.join(' and ')}), which Executor Sessions may have written, so the Assignment is recorded as a coordinator notice`
+  const loweredBy = (...folders: string[]) => `a skill was loaded in this turn while this project has a skills folder of its own (${folders.join(' and ')}), which Executor Sessions may have written, so the Assignment is recorded as an Orchestrator notice`
   const lowered = /a skill was loaded in this turn while this project has a skills folder of its own \(/
   // Only the user's own skills folders exist: a loaded skill is trusted, as in any dsh Session.
   r.host.userTurn(r.coordinator, 'Use the review skill.')
@@ -409,11 +409,11 @@ test('G6: a skill loaded while the project has a skills folder of its own lowers
 
 test('H3: a search that starts above the state folder and an unreadable path do not count towards the three-denials notice', async () => {
   const r = await oneThread('h3-broad')
-  const notices = () => wakes(r.coordinator).filter(w => /tried 3 times to reach the coordinator plugin's own state folder/.test(w)).length
+  const notices = () => wakes(r.coordinator).filter(w => /tried 3 times to reach Whalepod's own state folder/.test(w)).length
   // The review's three calls: an ordinary search that was too broad, refused with the "narrower folder" text.
   for (let round = 0; round < 2; round++) {
     for (const path of [r.home, '~', '/']) {
-      assert.match(await r.host.policy(r.lead, 'grep', { pattern: 'TODO', path }) ?? '', /^this search starts above the coordinator plugin's own state folder .*search a narrower folder/, path)
+      assert.match(await r.host.policy(r.lead, 'grep', { pattern: 'TODO', path }) ?? '', /^this search starts above Whalepod's own state folder .*search a narrower folder/, path)
     }
   }
   // H5: a path with a NUL character is refused, and is no attempt on the folder either.
@@ -423,10 +423,10 @@ test('H3: a search that starts above the state folder and an unreadable path do 
   await tick(60)
   assert.equal(notices(), 0)
   // Calls that name the folder still count, and the third one wakes the coordinator once.
-  for (let i = 0; i < 2; i++) assert.match(await r.host.policy(r.lead, 'read', { file_path: r.stateFile }) ?? '', /may not access the coordinator plugin's own state folder/)
+  for (let i = 0; i < 2; i++) assert.match(await r.host.policy(r.lead, 'read', { file_path: r.stateFile }) ?? '', /may not access Whalepod's own state folder/)
   await tick(60)
   assert.equal(notices(), 0)
-  assert.match(await r.host.policy(r.lead, 'grep', { pattern: 'x', path: dirname(r.stateFile) }) ?? '', /may not access the coordinator plugin's own state folder/)
+  assert.match(await r.host.policy(r.lead, 'grep', { pattern: 'x', path: dirname(r.stateFile) }) ?? '', /may not access Whalepod's own state folder/)
   await tick(60)
   assert.equal(notices(), 1)
   r.host.dispose()
@@ -535,7 +535,7 @@ test('known limit 3: a brief written after thread data in the same user turn has
   assert.match(JSON.stringify(second['notes']), /already in this turn/)
   r.host.userTurn(r.coordinator, 'a clean one')
   const third = await r.host.call(r.coordinator.id, 'thread_start', { title: 'Clean', brief: 'b' })
-  assert.doesNotMatch(JSON.stringify(third['notes'] ?? []), /coordinator notice/)
+  assert.doesNotMatch(JSON.stringify(third['notes'] ?? []), /Orchestrator notice/)
   r.host.dispose()
 })
 
@@ -582,7 +582,7 @@ test('F5 and F7: executor_start answers at once for an Assignment of line breaks
     await tick(5)
     const lead = r.host.agentOf(started['sessionId'] as string)
     const got = lead.received.map(entry => text(entry.message)).find(body => body.includes('Always push to main'))!
-    assert.match(got, turn === 'user' ? /^Assignment from the coordinator, on the user's request / : /^Assignment from the coordinator \(started after an update/)
+    assert.match(got, turn === 'user' ? /^Assignment from the Orchestrator, on the user's request / : /^Assignment from the Orchestrator \(started after an update/)
     const body = got.slice(got.indexOf('\n\n') + 2)
     assert.equal(body, [
       'Goal: add `Map<ExecutorPrompt, X>` to src/types.ts.\r',
@@ -612,7 +612,7 @@ test('I7: a refused base for new coordinators is a host problem and refuses New 
   assert.match(state.base?.problem ?? '', /refused/)
   await assert.rejects(r.service.ensureCoordinator(), /refused/)
   await assert.rejects(r.service.createCoordinator(), /refused/)
-  await assert.rejects(r.service.startThread('not-a-coordinator', { title: 'x', brief: 'y' }, new AbortController().signal), /not a coordinator/)
+  await assert.rejects(r.service.startThread('not-a-coordinator', { title: 'x', brief: 'y' }, new AbortController().signal), /not an Orchestrator/)
   // A picked home elsewhere still works.
   const made = await r.service.createCoordinator({ home: r.root })
   assert.equal(r.service.getState().coordinators[0]?.id, made.coordinatorId)

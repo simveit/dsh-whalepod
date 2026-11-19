@@ -126,7 +126,7 @@ export default class CoordinatorService extends TypertRemoteService {
     if (!lock.ok) {
       this.problem = {
         kind: 'locked',
-        detail: `another DeepSeek Harness process (pid ${lock.holder.pid}) uses this dsh home and runs the coordinator; quit it to use the coordinator here. `
+        detail: `another DeepSeek Harness process (pid ${lock.holder.pid}) uses this dsh home and runs Whalepod; quit it to use Whalepod here. `
           + `If no other DeepSeek Harness is running, delete ${join(dirname(file), 'owner.lock')} and restart.`,
       }
       say(`disabled: ${this.problem.detail}`)
@@ -154,8 +154,8 @@ export default class CoordinatorService extends TypertRemoteService {
     return {
       kind: 'not-ready',
       detail: missing.length === 0
-        ? 'the coordinator is starting'
-        : `dsh services the coordinator needs are not loaded: ${missing.join(', ')}. Check that the profile still has them, then restart.`,
+        ? 'Whalepod is starting'
+        : `dsh services Whalepod needs are not loaded: ${missing.join(', ')}. Check that the profile still has them, then restart.`,
     }
   }
 

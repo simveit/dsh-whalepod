@@ -139,7 +139,7 @@ const server = createServer(async (req, res) => {
   const reply = decide(body)
   const sys = systemText(body.system)
   // Role headings of prompts/coordinator.md and prompts/thread.md (and the role prompt of earlier releases).
-  const role = sys.includes('# Your role: coordinator') ? 'coordinator'
+  const role = sys.includes('# Your role: coordinator') || sys.includes('# Your role: Orchestrator') ? 'coordinator'
     : sys.includes('# Your role: Lead of an Executor Session') || sys.includes('# Your role: thread lead') ? 'lead' : undefined
   log({ path: url.pathname, model: body.model, stream: body.stream, kind: reply.kind, role, tools: reply.tools,
     lastText: reply.lastText.slice(-4000), reply: reply.tool ?? reply.text?.slice(0, 200), metadata: body.metadata })

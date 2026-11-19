@@ -147,10 +147,10 @@ test('prompts render with no leftover placeholder and only the new tool names', 
   assert.match(coordinator, /Your own folder is `\/Users\/u\/Documents\/deepseek-harness\/coordinator-2`/)
   for (const key of ['start', 'message', 'list', 'read', 'flagUser', 'stop', 'archive', 'send', 'report', 'memory', 'memoryRead'] as const) assert.match(coordinator, new RegExp(`\`${TOOL[key]}\``))
   assert.match(coordinator, new RegExp(ROLE.executorSessions))
-  assert.match(coordinator, /under the same coordinator/)
+  assert.match(coordinator, /under the same Orchestrator/)
   assert.match(thread, /Executor Session t-1a2b \("Fix it"\)/)
-  assert.match(thread, /coordinator "Coordinator 2"/)
-  assert.match(thread, /under the same coordinator/)
+  assert.match(thread, /Orchestrator "Coordinator 2"/)
+  assert.match(thread, /under the same Orchestrator/)
   for (const key of ['report', 'peers', 'send', 'memoryRead', 'memory'] as const) assert.match(thread, new RegExp(`\`${TOOL[key]}\``))
   // Decision 70: skills. The coordinator loads one to brief and names it in the Assignment; the Lead uses it.
   assert.match(coordinator, /load it with the `skill` tool to see what it asks for, and name it in the Assignment so that the Lead loads and uses it; you read a skill to brief an executor, you do not carry it out/)
@@ -187,7 +187,7 @@ function fakeOps(coordinatorBySession: Map<SessionId, string>) {
   const effects: string[] = []
   const coordinatorOf = (caller: SessionId): string => {
     const id = coordinatorBySession.get(caller)
-    if (id === undefined) throw new Error('this session is not a coordinator')
+    if (id === undefined) throw new Error('this session is not an Orchestrator')
     return id
   }
   const leadOf = (caller: SessionId): ScopedRow => {
@@ -288,7 +288,7 @@ test('executor tools see only executors under the same coordinator', async () =>
     assert.equal((await run(memory.get(name)!, 's-t-a1', args))['of'], 'c-a', name)
     assert.equal((await run(memory.get(name)!, 's-t-b1', args))['of'], 'c-b', name)
     assert.equal((await run(memory.get(name)!, 's-coord-a', args))['of'], 'c-a', name)
-    assert.match(String((await run(memory.get(name)!, 's-stranger', args))['error']), /not a coordinator/, name)
+    assert.match(String((await run(memory.get(name)!, 's-stranger', args))['error']), /not an Orchestrator/, name)
   }
   assert.deepEqual(effects, ['send t-a1->t-a2', 'memory c-a', 'memory c-b', 'memory c-a'])
 })

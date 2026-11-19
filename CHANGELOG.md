@@ -4,7 +4,8 @@ All notable changes to this plugin are listed here. Versions follow [Semantic Ve
 
 ## Unreleased
 
-- Two Matriarc switches per coordinator, in the setup step and on the Coordinator page: the coordinator chat (off by default) and new Executor Sessions (on by default). Whalepod runs `/matriarc on` or `/matriarc off` in the session; without the Matriarc plugin the switches do nothing.
+- The role formerly called Coordinator is now Orchestrator (编排者) in the UI, the prompts, the host's messages to models and the docs; ids, config keys, the storage folder and log marks keep `coordinator`.
+- Two Matriarc switches per Orchestrator, in the setup step and on the Orchestrator page: the Orchestrator chat (off by default) and new Executor Sessions (on by default). Whalepod runs `/matriarc on` or `/matriarc off` in the session; without the Matriarc plugin the switches do nothing.
 
 ## 0.5.0 - 2026-11-15
 

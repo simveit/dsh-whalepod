@@ -160,7 +160,7 @@ test('the brief is the user\'s instruction only in a turn the user opened', asyn
   r.host.noticeTurn(r.coordinator)
   const byNotice = await r.host.call(r.coordinator.id, 'thread_start', { title: 'Follow-up task', brief: 'Do more.' })
   await tick(1)
-  assert.match(JSON.stringify(byNotice['notes']), /recorded as a coordinator notice/)
+  assert.match(JSON.stringify(byNotice['notes']), /recorded as an Orchestrator notice/)
   const noticeThread = r.host.agentOf(byNotice['sessionId'] as string)
   const noticeBrief = noticeThread.received[0]!
   assert.equal(noticeBrief.message.source.kind, 'agent-message')
@@ -200,7 +200,7 @@ test('thread_message is an agent message in every path, delivered once per reque
   assert.equal(toB[1]!.message.source.kind, 'agent-message')
   for (const m of [...toA, toB[1]!]) {
     assert.notEqual(m.message.source.kind, 'user')
-    assert.match(textOf(m.message), /^Message from the coordinator \(not from the user\)/)
+    assert.match(textOf(m.message), /^Message from the Orchestrator \(not from the user\)/)
   }
   assert.doesNotMatch(textOf(toB[0]!.message), /Extra detail/, 'never merged into the brief')
   r.host.dispose()
@@ -308,7 +308,7 @@ test('ensureCoordinator opens the last coordinator: one session for concurrent c
   assert.equal(r.host.creates, 1)
   assert.deepEqual(await r.service.ensureCoordinator(), x)
   assert.deepEqual(await r.service.ensureCoordinator({ coordinatorId: x.coordinatorId }), x)
-  await assert.rejects(r.service.ensureCoordinator({ coordinatorId: 'c-ffff' }), /unknown coordinator/)
+  await assert.rejects(r.service.ensureCoordinator({ coordinatorId: 'c-ffff' }), /unknown Orchestrator/)
   assert.equal(r.host.creates, 1)
   r.host.dispose()
 })

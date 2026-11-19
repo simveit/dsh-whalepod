@@ -82,9 +82,9 @@ test('notice summaries name the thread and its most pressing fact', () => {
   assert.equal(threadSummary([n({ status: 'idle' })]), 'Executor Session "One" finished its turn')
   assert.ok(threadSummary([n({ title: 'x'.repeat(300), status: 'failed' })]).length <= 120)
   const messages = noticeMessages([n({ status: 'failed' }), n({ threadId: 't-2', title: 'Two', report: { kind: 'question', text: 'which?', at: 0 } })])
-  assert.deepEqual(messages.map(m => [m.threadId, m.summary]), [['t-1', 'Executor Session "One" failed'], ['t-2', 'Executor Session "Two" asks the coordinator a question']])
-  assert.match(messages[1]!.text, /^\[dsh-coordinator notice\] Executor Session t-2 asks the coordinator a question\./)
-  assert.match(messages[1]!.text, /<thread-data-[0-9a-f]{10} from="t-2">\ntitle: Two\nreport \(question for the coordinator\): which\?\n<\/thread-data-[0-9a-f]{10}>$/)
+  assert.deepEqual(messages.map(m => [m.threadId, m.summary]), [['t-1', 'Executor Session "One" failed'], ['t-2', 'Executor Session "Two" asks the Orchestrator a question']])
+  assert.match(messages[1]!.text, /^\[dsh-coordinator notice\] Executor Session t-2 asks the Orchestrator a question\./)
+  assert.match(messages[1]!.text, /<thread-data-[0-9a-f]{10} from="t-2">\ntitle: Two\nreport \(question for the Orchestrator\): which\?\n<\/thread-data-[0-9a-f]{10}>$/)
   assert.match(formatNotices([n({ wake: false, report: { kind: 'progress', text: 'x', at: 0 } })]).summary, /reported progress/)
 })
 

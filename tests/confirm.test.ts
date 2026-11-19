@@ -145,7 +145,7 @@ test('an existing folder below the coordinator\'s folder that the plugin did not
   r.coordinator.endTurn()
   await tick(5)
   assert.match(r.host.questions.at(-1)!.request.questions[0]!.question, /Executor Session "Repo"/)
-  assert.match((r.host.questions.at(-1)!.request.questions[0] as { detail?: string }).detail ?? '', /is an existing folder below the coordinator's folder that the plugin did not make/)
+  assert.match((r.host.questions.at(-1)!.request.questions[0] as { detail?: string }).detail ?? '', /is an existing folder below the Orchestrator's folder that the plugin did not make/)
   const started = await r.service.confirmFolder(asked['id'], 'once')
   assert.equal((started as { cwd: string }).cwd, repo)
   // A folder the plugin made for a live thread is not "existing" for the next one: it is another thread's folder (L7).
