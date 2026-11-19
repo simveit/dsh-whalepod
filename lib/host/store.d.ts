@@ -72,6 +72,10 @@ export interface PersistedCoordinator {
     coordinatorModel?: ModelChoice;
     /** The model new Executor Sessions start on; absent = same as the coordinator. */
     executorModel?: ModelChoice;
+    /** The coordinator chat uses Matriarc; absent = false. */
+    coordinatorMatriarc?: boolean;
+    /** New Executor Sessions use Matriarc; absent = true. */
+    executorMatriarc?: boolean;
     /** Which log mark validation expects: the opening turn (or the legacy title), or the role mark of an adopted chat. */
     marks?: 'opening' | 'role';
     /** Chat Sessions this coordinator had before a Reopen; messages they sent into threads still read as the coordinator's. */

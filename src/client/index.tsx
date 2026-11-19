@@ -20,6 +20,7 @@ import { CoordinatorRowHover, CoordinatorRowTrailing } from './row-decor.tsx'
 import { mountThreadsPane } from './side-pane.tsx'
 import { fakeSource, remoteSource, wantsFakeSource } from './source.ts'
 import { CoordinatorStore, createThenOpen, errorText } from './store.ts'
+import { candidates, navigatorsOf, type BundleSummary, type LocalizedText } from './navigator.ts'
 import { CSS, STYLE_ID } from './styles.ts'
 
 /** Same id for the sidebar entry and the main panel key: the sidebar opens the panel whose key matches. */
@@ -34,11 +35,19 @@ interface ClientRemote {
   /** Host events dsh forwards to the client (dsh's own model picker listens the same way). */
   $on?(event: string, listener: () => void): unknown
   coordinator?: CoordinatorRemote
+  /** dsh-commands/src/index.ts:314-320; reads the registry, writes nothing to the session (as dsh-matriarc reads it). */
+  commands?: { list(sessionId: string): Promise<{ ok: boolean; value?: readonly { name: string; input?: { hint: string } }[] }> }
+  /** dsh-plugin-manager/src/index.ts:499-505; present where the Host offers plugin management. */
+  pluginManager?: { listBundles(): Promise<{ ok: boolean; value?: readonly BundleSummary[] }> }
 }
 interface LocaleService {
   register(ns: string, dicts: Record<string, Record<string, string>>): () => void
   bind(ns: string): Translate
+  /** dsh-client-locale/src/client/index.ts:215. */
+  resolveText?(text: LocalizedText): string
 }
+/** dsh-client-ui-plugin-manager/src/client/index.ts:49-59, :153-165. */
+interface PluginNavigation { openBundle(packageName: string): void; openList(): void }
 interface UiWorkspace {
   openSession(target: string): void
   /** Host-native directory chooser (rc.2 ui-workspace); null when cancelled. */
@@ -146,6 +155,19 @@ export async function apply(ctx: ClientContext): Promise<void> {
     // Release builds drop the fake source entirely (__DSH_COORDINATOR_DEV__ is false there).
     const source = __DSH_COORDINATOR_DEV__ && wantsFakeSource() ? fakeSource() : remoteSource(() => uiCtx.remote.coordinator)
     const store = new CoordinatorStore(source)
+    // Matriarc's navigators and the Plugins page bundles, from scopes that inject those Remote namespaces (as
+    // dsh-matriarc reads them); without one the notice is not shown, or offers no bundle.
+    let commands: ClientRemote['commands']
+    let pluginManager: ClientRemote['pluginManager']
+    uiCtx.inject(['remote.commands'], (scope) => {
+      commands = (scope as ClientContext).remote.commands
+      scope.effect(() => () => { commands = undefined }, 'dsh-coordinator: commands')
+    })
+    uiCtx.inject(['remote.pluginManager'], (scope) => {
+      pluginManager = (scope as ClientContext).remote.pluginManager
+      scope.effect(() => () => { pluginManager = undefined }, 'dsh-coordinator: plugin list')
+    })
+    const resolveText = (text: LocalizedText) => ctx.locale.resolveText?.(text) ?? (typeof text === 'string' ? text : text.en)
     uiCtx.effect(() => () => { store.dispose() }, 'dsh-coordinator: state poller')
     const hooks = { coordinator: store }
     const goHome = () => { optional<LayoutService>(uiCtx, 'layout')?.selectPanel(PANEL_ID) }
@@ -209,6 +231,8 @@ export async function apply(ctx: ClientContext): Promise<void> {
         return result
       },
       setCoordinatorMemoryEnabled: async (coordinatorId, enabled) => { await store.source.setCoordinatorMemoryEnabled(coordinatorId, enabled); store.refresh() },
+      setCoordinatorMatriarcEnabled: async (coordinatorId, enabled) => { await store.source.setCoordinatorMatriarcEnabled(coordinatorId, enabled); store.refresh() },
+      setExecutorMatriarcEnabled: async (coordinatorId, enabled) => { await store.source.setExecutorMatriarcEnabled(coordinatorId, enabled); store.refresh() },
       listModelChoices: coordinatorId => store.source.listModelChoices(coordinatorId),
       watchModels: (listener) => { modelListeners.add(listener); return () => { modelListeners.delete(listener) } },
       setCoordinatorModel: async (coordinatorId, model) => { await store.source.setCoordinatorModel(coordinatorId, model); store.refresh() },
@@ -248,6 +272,25 @@ export async function apply(ctx: ClientContext): Promise<void> {
       },
       refresh: () => { store.refresh() },
       holdFast: () => store.holdFast(),
+      navigatorNotice: async (sessionId) => {
+        try {
+          const listed = await commands?.list(sessionId)
+          const command = listed?.ok === true ? listed.value?.find(entry => entry.name === 'matriarc') : undefined
+          if (command === undefined || navigatorsOf(command.input?.hint).length > 0) return undefined
+          const bundles = await pluginManager?.listBundles().catch(() => undefined)
+          return {
+            candidates: candidates(bundles?.ok === true ? bundles.value ?? [] : []).map(c => ({ name: c.name, title: resolveText(c.title) })),
+            canOpen: optional<PluginNavigation>(uiCtx, 'pluginNavigation') !== undefined,
+          }
+        } catch {
+          return undefined
+        }
+      },
+      openPlugins: (packageName) => {
+        const navigation = optional<PluginNavigation>(uiCtx, 'pluginNavigation')
+        if (packageName === undefined) navigation?.openList()
+        else navigation?.openBundle(packageName)
+      },
     }
     const togglePane = mountThreadsPane(uiCtx as never, {
       store, hooks, t, goHome, openSession: actions.openSession, openCoordinator: actions.openCoordinator,

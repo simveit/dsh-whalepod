@@ -89,6 +89,10 @@ export interface PersistedCoordinator {
   coordinatorModel?: ModelChoice
   /** The model new Executor Sessions start on; absent = same as the coordinator. */
   executorModel?: ModelChoice
+  /** The coordinator chat uses Matriarc; absent = false. */
+  coordinatorMatriarc?: boolean
+  /** New Executor Sessions use Matriarc; absent = true. */
+  executorMatriarc?: boolean
   /** Which log mark validation expects: the opening turn (or the legacy title), or the role mark of an adopted chat. */
   marks?: 'opening' | 'role'
   /** Chat Sessions this coordinator had before a Reopen; messages they sent into threads still read as the coordinator's. */
@@ -237,6 +241,8 @@ function coordinatorOf(value: unknown): PersistedCoordinator | undefined {
     // Only the shape is checked here: whether dsh still offers the model is asked when it is used (providers load later).
     ...(() => { const model = modelChoiceOf(c.coordinatorModel); return model === undefined ? {} : { coordinatorModel: model } })(),
     ...(() => { const model = modelChoiceOf(c.executorModel); return model === undefined ? {} : { executorModel: model } })(),
+    ...(c.coordinatorMatriarc === true ? { coordinatorMatriarc: true } : {}),
+    ...(c.executorMatriarc === false ? { executorMatriarc: false } : {}),
     ...(c.marks === 'opening' || c.marks === 'role' ? { marks: c.marks } : {}),
     ...(Array.isArray(c.pastSessionIds) ? { pastSessionIds: c.pastSessionIds.filter((s): s is string => typeof s === 'string').slice(-10) } : {}),
     createdAt: isNumber(c.createdAt) ? c.createdAt : 0,

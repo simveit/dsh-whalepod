@@ -15,9 +15,10 @@ function fullState(): CoordinatorState {
       { id: 'c-2', sessionId: 's-c2', name: 'Noether', title: 'Release', executorPrompt: 'Write tests first.\nAsk before adding a dependency.', memory: '## Preferences\n- Short reports.', memoryRevision: 4,
         memoryBy: { by: 'executor', executorId: 't-1', executorTitle: 'a', at: 9 }, memoryOff: true, home: '/h/coordinator-2', folder: '/h/elsewhere', folderProblem: 'refused: inside ~/Library',
         model: { ok: false, reason: 'model-unavailable', model: 'p/m' },
-        coordinatorModel: { provider: 'p', model: 'm', reasoningEffort: 'high' }, executorModel: { provider: 'q', model: 'n' }, createdAt: 2, updatedAt: 3 },
+        coordinatorModel: { provider: 'p', model: 'm', reasoningEffort: 'high' }, executorModel: { provider: 'q', model: 'n' },
+        coordinatorMatriarc: true, executorMatriarc: false, createdAt: 2, updatedAt: 3 },
       { id: 'c-1', sessionId: null, name: 'Feynman', title: 'Coordinator Feynman', home: '/h/dsh-threads', folder: '/h/dsh-threads', archived: true, chatArchived: true,
-        model: { ok: true, model: 'p/m' }, createdAt: 1, updatedAt: 1 },
+        model: { ok: true, model: 'p/m' }, coordinatorMatriarc: false, executorMatriarc: true, createdAt: 1, updatedAt: 1 },
     ],
     threads: [
       { id: 't-1', sessionId: '', title: 'a', cwd: '/x', status: 'needs-user', coordinatorId: 'c-2', statusDetail: 'confirm',
@@ -35,6 +36,7 @@ function fullState(): CoordinatorState {
     problems: [{ kind: 'bad-root', detail: 'x' }, { kind: 'state-dropped', detail: 'y' }],
     allowedFolders: ['/h/dev/site'],
     threadPermission: { mode: 'auto', autoAvailable: true, effective: 'auto' },
+    matriarc: { installed: true },
   }
 }
 
@@ -105,6 +107,8 @@ test('the client spec has the executor prompt, memory and rename methods', () =>
     ['setCoordinatorMemory', { coordinatorId: 'c-2', text: '- Short reports.', revision: 4 }, { saved: false, coordinator: info }],
     ['setCoordinatorMemoryEnabled', { coordinatorId: 'c-2', enabled: false }, info],
     ['renameCoordinator', { coordinatorId: 'c-2', name: 'Hypatia' }, info],
+    ['setCoordinatorMatriarcEnabled', { coordinatorId: 'c-2', enabled: true }, info],
+    ['setExecutorMatriarcEnabled', { coordinatorId: 'c-2', enabled: false }, info],
   ] as const) {
     const spec = methods[`coordinator/${method}`]!
     assert.ok(spec !== undefined, method)

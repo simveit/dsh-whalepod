@@ -196,6 +196,10 @@ export interface CoordinatorInfo {
      * coordinator". Applies to Executor Sessions started after the change.
      */
     executorModel?: ModelChoice;
+    /** The coordinator chat uses Matriarc (default false; applies at once). Set by the owner only. */
+    coordinatorMatriarc: boolean;
+    /** New Executor Sessions use Matriarc (default true; applies to ones started afterwards). Set by the owner only. */
+    executorMatriarc: boolean;
     createdAt: number;
     updatedAt: number;
 }
@@ -292,6 +296,10 @@ export interface CoordinatorState {
     allowedFolders?: string[];
     /** The permission mode new threads start in, as the user chose it; absent before the service is ready. Global. */
     threadPermission?: ThreadPermissionState;
+    /** Whether Matriarc is installed: a tool named `matriarc` is registered. Without it the two Matriarc settings change nothing. */
+    matriarc?: {
+        installed: boolean;
+    };
 }
 export interface ThreadPermissionState {
     /** What the user chose (or the configured default). */
@@ -327,6 +335,10 @@ export interface CreateCoordinatorRequest {
     suggestedName?: string;
     coordinatorModel?: ModelChoice | null;
     executorModel?: ModelChoice | null;
+    /** Left out = false; a non-boolean value creates nothing. */
+    coordinatorMatriarc?: boolean;
+    /** Left out = true; a non-boolean value creates nothing. */
+    executorMatriarc?: boolean;
 }
 /**
  * Result of `coordinator/newCoordinatorSetup`: what the New coordinator form starts from. Nothing is reserved; the
@@ -343,6 +355,12 @@ export interface NewCoordinatorSetup {
     coordinatorModel?: ModelChoice;
     /** The default for the executor model picker; absent when dsh does not offer it ("Same as coordinator"). */
     executorModel?: ModelChoice;
+    /** Whether Matriarc is loaded, and the defaults of the form's two Matriarc switches. */
+    matriarc: {
+        installed: boolean;
+        coordinator: false;
+        executor: true;
+    };
 }
 /** Request of `coordinator/setCoordinatorFolder`; returns the updated `CoordinatorInfo`. */
 export interface SetCoordinatorFolderRequest {
@@ -373,6 +391,16 @@ export interface SetCoordinatorMemoryResult {
 export interface SetCoordinatorMemoryEnabledRequest {
     coordinatorId: string;
     /** False switches the coordinator's memory off (the text is kept); true switches it on again. */
+    enabled: boolean;
+}
+/** Request of `coordinator/setCoordinatorMatriarcEnabled`; returns the updated `CoordinatorInfo`. */
+export interface SetCoordinatorMatriarcEnabledRequest {
+    coordinatorId: string;
+    enabled: boolean;
+}
+/** Request of `coordinator/setExecutorMatriarcEnabled`; returns the updated `CoordinatorInfo`. */
+export interface SetExecutorMatriarcEnabledRequest {
+    coordinatorId: string;
     enabled: boolean;
 }
 /** Request of `coordinator/renameCoordinator`; returns the updated `CoordinatorInfo`. */

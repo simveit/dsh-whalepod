@@ -288,6 +288,30 @@ export interface AgentTeams {
     setEnabled(agent: Agent, enabled: boolean, signal?: AbortSignal): Promise<void>;
     isEnabled(agent: Agent): boolean;
 }
+/**
+ * dsh's command runtime (`ctx.get('commands')`, `CommandRuntime.execute`): runs a slash-command line in an Agent's
+ * Session as the user would. `undefined` when the line names no registered command.
+ */
+export interface Commands {
+    /** The command descriptors one Agent sees (`CommandRuntime.list`). */
+    list?(agent: Agent): readonly {
+        name: string;
+        input?: {
+            hint?: string;
+        };
+    }[];
+    execute(agent: Agent, line: string, attachments: readonly unknown[], signal: AbortSignal): Promise<{
+        commandId: string;
+        result: {
+            kind: string;
+            text?: string;
+        };
+    } | undefined>;
+}
+/** The command runtime when `ctx.get('commands')` has an `execute` function, else undefined. */
+export declare function commandsOf(ctx: {
+    get(name: never): unknown;
+}): Commands | undefined;
 /** Raw tool definition accepted by `ctx.tools.register` (dsh-tools `ToolDefinition`). */
 export interface ToolDefinition {
     readonly name: string;

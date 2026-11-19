@@ -114,7 +114,7 @@ An executor shows as Standing by when its last turn ended without a result and i
 
 If you delete a coordinator chat from the left sidebar instead, the coordinator keeps its Executor Sessions and their notices wait for it. The page then shows the chat's state: "Chat archived", "Chat deleted" when the session no longer exists, or "No chat yet". Reopen chat (or Start chat when there never was one) creates a new chat for the same coordinator in its folder and hands over what waited.
 
-**Shared settings.** "Executor Sessions run in", the allowed folders and the running cap (`maxRunningThreads`) apply to all coordinators together. The name, the two models, the Executor prompt and the memory, with its switch, belong to each coordinator.
+**Shared settings.** "Executor Sessions run in", the allowed folders and the running cap (`maxRunningThreads`) apply to all coordinators together. The name, the two models, the Executor prompt and the memory, with its switch, belong to each coordinator. So do two Matriarc switches, for the coordinator chat (off by default) and for new Executor Sessions (on by default): Whalepod runs `/matriarc on` or `/matriarc off` in the session, which needs the Matriarc plugin.
 
 ## Configuration
 

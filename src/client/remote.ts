@@ -12,8 +12,8 @@ import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult, PingResult,
-  DeleteCoordinatorRequest, DeleteCoordinatorResult, ListModelChoicesRequest, ModelChoices, NewCoordinatorSetup, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult,
-  SetExecutorPromptRequest, SetModelRequest, ThreadInfo, ThreadPermissionState,
+  DeleteCoordinatorRequest, DeleteCoordinatorResult, ListModelChoicesRequest, ModelChoices, NewCoordinatorSetup, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMatriarcEnabledRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult,
+  SetExecutorMatriarcEnabledRequest, SetExecutorPromptRequest, SetModelRequest, ThreadInfo, ThreadPermissionState,
 } from '../types.ts'
 
 /** The package name, as the dsh generator writes it into a Remote spec (the plugin id stays `dsh-coordinator`). */
@@ -68,6 +68,9 @@ const coordinatorInfoSchema = (): z.ZodType<CoordinatorInfo> => (coordinatorInfo
   // A host without the model settings sends none; a malformed one reads as not set.
   coordinatorModel: modelChoiceSchema().optional().catch(undefined),
   executorModel: modelChoiceSchema().optional().catch(undefined),
+  // A host without the Matriarc settings sends none: the defaults apply (coordinator chat off, Executor Sessions on).
+  coordinatorMatriarc: z.boolean().catch(false),
+  executorMatriarc: z.boolean().catch(true),
   createdAt: z.number(),
   updatedAt: z.number(),
 }) as z.ZodType<CoordinatorInfo>)
@@ -109,6 +112,8 @@ const stateResultSchema = (): z.ZodType<ClientState> => (stateResult ??= z.objec
   problems: z.array(problemSchema()).optional().catch(undefined),
   allowedFolders: z.array(z.string()).optional().catch(undefined),
   threadPermission: permissionStateSchema().optional().catch(undefined),
+  // A host without Matriarc support sends none: read as not installed.
+  matriarc: z.object({ installed: z.boolean().catch(false) }).catch({ installed: false }),
   threads: z.array(threadSchema()),
   // Archived rows are listed for the page's Archived group; a host without the field sends none.
   archivedThreads: z.array(threadSchema()).optional().catch(undefined),
@@ -132,6 +137,7 @@ let createRequest: z.ZodType<CreateCoordinatorRequest> | undefined
 const createRequestSchema = (): z.ZodType<CreateCoordinatorRequest> => (createRequest ??= z.object({
   home: z.string().optional(), name: z.string().optional(), suggestedName: z.string().optional(),
   coordinatorModel: modelChoiceSchema().nullable().optional(), executorModel: modelChoiceSchema().nullable().optional(),
+  coordinatorMatriarc: z.boolean().optional(), executorMatriarc: z.boolean().optional(),
 }) as z.ZodType<CreateCoordinatorRequest>)
 let ensureResult: z.ZodType<EnsureCoordinatorResult> | undefined
 const ensureResultSchema = (): z.ZodType<EnsureCoordinatorResult> => (ensureResult ??= z.object({ coordinatorId: z.string(), sessionId: z.string() }))
@@ -145,6 +151,10 @@ let memoryResult: z.ZodType<SetCoordinatorMemoryResult> | undefined
 const memoryResultSchema = (): z.ZodType<SetCoordinatorMemoryResult> => (memoryResult ??= z.object({ saved: z.boolean(), coordinator: coordinatorInfoSchema() }) as z.ZodType<SetCoordinatorMemoryResult>)
 let memoryEnabledRequest: z.ZodType<SetCoordinatorMemoryEnabledRequest> | undefined
 const memoryEnabledRequestSchema = (): z.ZodType<SetCoordinatorMemoryEnabledRequest> => (memoryEnabledRequest ??= z.object({ coordinatorId: z.string(), enabled: z.boolean() }))
+let coordinatorMatriarcRequest: z.ZodType<SetCoordinatorMatriarcEnabledRequest> | undefined
+const coordinatorMatriarcRequestSchema = (): z.ZodType<SetCoordinatorMatriarcEnabledRequest> => (coordinatorMatriarcRequest ??= z.object({ coordinatorId: z.string(), enabled: z.boolean() }))
+let executorMatriarcRequest: z.ZodType<SetExecutorMatriarcEnabledRequest> | undefined
+const executorMatriarcRequestSchema = (): z.ZodType<SetExecutorMatriarcEnabledRequest> => (executorMatriarcRequest ??= z.object({ coordinatorId: z.string(), enabled: z.boolean() }))
 let modelChoicesRequest: z.ZodType<ListModelChoicesRequest> | undefined
 const modelChoicesRequestSchema = (): z.ZodType<ListModelChoicesRequest> => (modelChoicesRequest ??= z.object({ coordinatorId: z.string() }))
 const modelSettingSchema = () => z.object({ stored: modelChoiceSchema().optional(), effective: modelChoiceSchema().optional(), available: z.boolean(), unchecked: z.boolean().optional() })
@@ -172,6 +182,9 @@ const newSetupSchema = (): z.ZodType<NewCoordinatorSetup> => (newSetup ??= z.obj
   partial: z.boolean(),
   coordinatorModel: modelChoiceSchema().optional(),
   executorModel: modelChoiceSchema().optional(),
+  // A host without Matriarc support sends none: not installed, so the form sends no Matriarc choice.
+  matriarc: z.object({ installed: z.boolean().catch(false), coordinator: z.literal(false).catch(false), executor: z.literal(true).catch(true) })
+    .catch({ installed: false, coordinator: false, executor: true }),
 }) as z.ZodType<NewCoordinatorSetup>)
 let setModelRequest: z.ZodType<SetModelRequest> | undefined
 const setModelRequestSchema = (): z.ZodType<SetModelRequest> => (setModelRequest ??= z.object({ coordinatorId: z.string(), model: modelChoiceSchema().nullable() }) as z.ZodType<SetModelRequest>)
@@ -324,6 +337,22 @@ export const TYPERT_REMOTE = createTypertRemoteInfo({
       cancellation: { parameter: 'signal' },
       result: { mode: 'strict', typeSymbol: `${PACKAGE}#CoordinatorInfo`, create: coordinatorInfoSchema },
     },
+    'coordinator/setCoordinatorMatriarcEnabled': {
+      service: 'coordinator',
+      description: 'Switch Matriarc on or off for a coordinator\'s chat; applies at once.',
+      invocation: { kind: 'direct' },
+      parameters: [requestParameter('SetCoordinatorMatriarcEnabledRequest', coordinatorMatriarcRequestSchema)],
+      cancellation: { parameter: 'signal' },
+      result: { mode: 'strict', typeSymbol: `${PACKAGE}#CoordinatorInfo`, create: coordinatorInfoSchema },
+    },
+    'coordinator/setExecutorMatriarcEnabled': {
+      service: 'coordinator',
+      description: 'Switch Matriarc on or off for the Executor Sessions a coordinator starts afterwards.',
+      invocation: { kind: 'direct' },
+      parameters: [requestParameter('SetExecutorMatriarcEnabledRequest', executorMatriarcRequestSchema)],
+      cancellation: { parameter: 'signal' },
+      result: { mode: 'strict', typeSymbol: `${PACKAGE}#CoordinatorInfo`, create: coordinatorInfoSchema },
+    },
     'coordinator/renameCoordinator': {
       service: 'coordinator',
       description: 'Rename a coordinator; its chat title and sidebar group follow.',
@@ -440,6 +469,8 @@ export interface CoordinatorRemote {
   setExecutorModel(request: SetModelRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
   setCoordinatorMemory(request: SetCoordinatorMemoryRequest, signal?: AbortSignal): Promise<RemoteResult<SetCoordinatorMemoryResult>>
   setCoordinatorMemoryEnabled(request: SetCoordinatorMemoryEnabledRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
+  setCoordinatorMatriarcEnabled(request: SetCoordinatorMatriarcEnabledRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
+  setExecutorMatriarcEnabled(request: SetExecutorMatriarcEnabledRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
   renameCoordinator(request: RenameCoordinatorRequest, signal?: AbortSignal): Promise<RemoteResult<CoordinatorInfo>>
   archiveCoordinator(request: ArchiveRequest, signal?: AbortSignal): Promise<RemoteResult<ArchiveResult>>
   deleteCoordinator(request: DeleteCoordinatorRequest, signal?: AbortSignal): Promise<RemoteResult<DeleteCoordinatorResult>>

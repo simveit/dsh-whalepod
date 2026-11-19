@@ -302,6 +302,8 @@ export type NewCoordinatorDraft = ({ kind: 'default' } | { kind: 'picked'; home:
   setup?: NewCoordinatorSetup
   coordinatorModel?: ModelChoice | null
   executorModel?: ModelChoice | null
+  coordinatorMatriarc?: boolean
+  executorMatriarc?: boolean
 }
 
 /** The host's `nameKey` (ids.ts): the key two coordinator names are compared by. Kept equal to it by a test. */
@@ -338,6 +340,8 @@ export function newDraftAt(current: Omit<NewCoordinatorDraft, 'kind' | 'home'> |
     ...(current?.setup === undefined ? {} : { setup: current.setup }),
     ...(current?.coordinatorModel === undefined ? {} : { coordinatorModel: current.coordinatorModel }),
     ...(current?.executorModel === undefined ? {} : { executorModel: current.executorModel }),
+    ...(current?.coordinatorMatriarc === undefined ? {} : { coordinatorMatriarc: current.coordinatorMatriarc }),
+    ...(current?.executorMatriarc === undefined ? {} : { executorMatriarc: current.executorMatriarc }),
   }
 }
 
@@ -347,7 +351,7 @@ export function newDraftAt(current: Omit<NewCoordinatorDraft, 'kind' | 'home'> |
  * models are the ones the pickers show: the user's choice, else the proposed default, and `null` for the empty first
  * option. Without the host's proposal (it could not be loaded; the form does not create while it is loading) the
  * pickers show nothing to choose from, so neither a suggestion nor a model is sent: the host then picks the name and
- * sets no model.
+ * sets no model. The two Matriarc switches (defaults off and on) are sent only while Matriarc is installed.
  */
 export function newCoordinatorRequest(draft: NewCoordinatorDraft, typedPath = ''): CreateCoordinatorRequest {
   const home = draft.kind === 'typed' ? typedPath.trim() : draft.kind === 'picked' ? draft.home : undefined
@@ -360,6 +364,7 @@ export function newCoordinatorRequest(draft: NewCoordinatorDraft, typedPath = ''
       coordinatorModel: formModel(draft.coordinatorModel, setup.coordinatorModel) ?? null,
       executorModel: formModel(draft.executorModel, setup.executorModel) ?? null,
     }),
+    ...(setup?.matriarc?.installed === true ? { coordinatorMatriarc: draft.coordinatorMatriarc ?? false, executorMatriarc: draft.executorMatriarc ?? true } : {}),
   }
 }
 

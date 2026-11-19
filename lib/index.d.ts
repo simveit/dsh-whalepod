@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
-import type { ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult, DeleteCoordinatorRequest, DeleteCoordinatorResult, ListModelChoicesRequest, ModelChoices, NewCoordinatorSetup, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, SetModelRequest, ThreadPermissionState } from './types.ts';
+import type { ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult, DeleteCoordinatorRequest, DeleteCoordinatorResult, ListModelChoicesRequest, ModelChoices, NewCoordinatorSetup, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMatriarcEnabledRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorMatriarcEnabledRequest, SetExecutorPromptRequest, SetModelRequest, ThreadPermissionState } from './types.ts';
 export type * from './types.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
@@ -71,6 +71,10 @@ export default class CoordinatorService extends TypertRemoteService {
     setCoordinatorMemory(request: SetCoordinatorMemoryRequest, signal: AbortSignal): Promise<SetCoordinatorMemoryResult>;
     /** Switch a coordinator's memory on or off; off keeps the text but nobody is shown it or may change it by tool. Owner only. */
     setCoordinatorMemoryEnabled(request: SetCoordinatorMemoryEnabledRequest, signal: AbortSignal): Promise<CoordinatorInfo>;
+    /** Switch Matriarc on or off for a coordinator's chat; applies at once. Owner only. */
+    setCoordinatorMatriarcEnabled(request: SetCoordinatorMatriarcEnabledRequest, signal: AbortSignal): Promise<CoordinatorInfo>;
+    /** Switch Matriarc on or off for the Executor Sessions a coordinator starts afterwards. Owner only. */
+    setExecutorMatriarcEnabled(request: SetExecutorMatriarcEnabledRequest, signal: AbortSignal): Promise<CoordinatorInfo>;
     /** Rename a coordinator (its chat title and sidebar group follow; folders are never renamed). Owner only. */
     renameCoordinator(request: RenameCoordinatorRequest, signal: AbortSignal): Promise<CoordinatorInfo>;
     /** Archive a coordinator with its finished threads (`force` also stops working ones); optionally its sidebar Workspace. */

@@ -573,6 +573,20 @@ export declare class ThreadService implements ThreadOps {
     private promote;
     /** Narrow a coordinator-like chat to its allow list (coordinator-tools.ts); the plugin's tools only for a stored one. */
     private restrictCoordinator;
+    /** Whether the Matriarc plugin is loaded: a global tool named `matriarc` is registered. */
+    private matriarcInstalled;
+    /**
+     * Run `/matriarc on|off` in an Agent's Session through dsh's command runtime. Returns why it failed (an error result
+     * or a thrown error), else undefined; without the runtime or the command (Matriarc not loaded) it does nothing.
+     */
+    private switchMatriarc;
+    /** A stored coordinator's chat with `coordinatorMatriarc` on: only it gets the `matriarc` tool. */
+    private matriarcChat;
+    /**
+     * Apply `coordinatorMatriarc` to a coordinator's chat: re-narrow its tools and run `/matriarc on|off` in it (`agent`,
+     * else the open chat, resolved as `setCoordinatorModel` does). A failure is logged; the setting stays saved.
+     */
+    private applyChatMatriarc;
     /**
      * Thread agents run on the user's Standard tools, except the plugin manager and market tools, which would let a
      * thread install code into the user's dsh.
@@ -647,6 +661,8 @@ export declare class ThreadService implements ThreadOps {
      * model-defaults.ts are only what the form's pickers start on (`newCoordinatorSetup`), so a model is stored only
      * when the request names it. The chat starts on the coordinator model, as a replacement chat starts on a stored one.
      *
+     * `coordinatorMatriarc` (default false) and `executorMatriarc` (default true) must be booleans when given.
+     *
      * Every way a coordinator comes about without the form (`ensureCoordinator` with no coordinator, a New Session in a
      * coordinator's group, the upgrade of an earlier release, Reopen) keeps the automatic name and sets no model.
      */
@@ -656,6 +672,8 @@ export declare class ThreadService implements ThreadOps {
         suggestedName?: unknown;
         coordinatorModel?: unknown;
         executorModel?: unknown;
+        coordinatorMatriarc?: unknown;
+        executorMatriarc?: unknown;
     }): Promise<{
         coordinatorId: string;
         sessionId: string;
@@ -835,6 +853,16 @@ export declare class ThreadService implements ThreadOps {
      * refused with one line for the coordinator and for its Leads, and the stored text and its revision stay as they are.
      */
     setCoordinatorMemoryEnabled(request: {
+        coordinatorId?: unknown;
+        enabled?: unknown;
+    }): CoordinatorInfo;
+    /** The owner switches Matriarc for a coordinator's chat (a Remote method; owner only); applies at once. */
+    setCoordinatorMatriarcEnabled(request: {
+        coordinatorId?: unknown;
+        enabled?: unknown;
+    }): Promise<CoordinatorInfo>;
+    /** The owner switches Matriarc for new Executor Sessions (a Remote method; owner only); running ones keep theirs. */
+    setExecutorMatriarcEnabled(request: {
         coordinatorId?: unknown;
         enabled?: unknown;
     }): CoordinatorInfo;

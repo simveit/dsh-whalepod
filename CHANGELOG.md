@@ -2,6 +2,10 @@
 
 All notable changes to this plugin are listed here. Versions follow [Semantic Versioning](https://semver.org/). The DeepSeek Harness versions a release runs on are in `engines.dsh` in `package.json`.
 
+## Unreleased
+
+- Two Matriarc switches per coordinator, in the setup step and on the Coordinator page: the coordinator chat (off by default) and new Executor Sessions (on by default). Whalepod runs `/matriarc on` or `/matriarc off` in the session; without the Matriarc plugin the switches do nothing.
+
 ## 0.5.0 - 2026-11-15
 
 ### Added

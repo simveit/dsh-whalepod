@@ -116,7 +116,7 @@ Eine Executor Session steht auf "Standing by", wenn ihre letzte Runde ohne Ergeb
 
 Löschst du einen Coordinator-Chat stattdessen in der linken Seitenleiste, behält der Coordinator seine Executor Sessions, und ihre Benachrichtigungen warten auf ihn. Die Seite zeigt dann den Zustand des Chats: "Chat archived", "Chat deleted", wenn die Session nicht mehr existiert, oder "No chat yet". "Reopen chat" (oder "Start chat", wenn es nie einen gab) legt im Ordner des Coordinators einen neuen Chat für denselben Coordinator an und übergibt, was gewartet hat.
 
-**Gemeinsame Einstellungen.** "Executor Sessions run in", die erlaubten Ordner und die Obergrenze gleichzeitig laufender Executor Sessions (`maxRunningThreads`) gelten für alle Coordinators zusammen. Name, die beiden Modelle, Executor prompt und Gedächtnis gehören zu jedem einzelnen Coordinator.
+**Gemeinsame Einstellungen.** "Executor Sessions run in", die erlaubten Ordner und die Obergrenze gleichzeitig laufender Executor Sessions (`maxRunningThreads`) gelten für alle Coordinators zusammen. Name, die beiden Modelle, Executor prompt und Gedächtnis gehören zu jedem einzelnen Coordinator. Ebenso zwei Matriarc-Schalter, für den Chat des Coordinators (standardmäßig aus) und für neue Executor Sessions (standardmäßig an): Whalepod führt in der Session `/matriarc on` oder `/matriarc off` aus, wofür das Plugin Matriarc nötig ist.
 
 ## Konfiguration
 

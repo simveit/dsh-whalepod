@@ -72,9 +72,10 @@ export function neverForCoordinator(name: string): boolean {
  * @param own - whether the plugin's own coordinator tools are included: for stored coordinators and candidates (a
  * candidate lists them, but the host refuses its calls until the user's first typed message promotes it); a fenced
  * Session gets none.
+ * @param matriarc - add the Matriarc plugin's `matriarc` tool (a stored coordinator with `coordinatorMatriarc` on).
  */
-export function coordinatorWanted(extra: readonly string[], own = true): Set<string> {
-  return new Set<string>([...(own ? COORDINATOR_OWN : []), ...COORDINATOR_STOCK, ...extra.filter(name => !neverForCoordinator(name))])
+export function coordinatorWanted(extra: readonly string[], own = true, matriarc = false): Set<string> {
+  return new Set<string>([...(own ? COORDINATOR_OWN : []), ...(matriarc ? ['matriarc'] : []), ...COORDINATOR_STOCK, ...extra.filter(name => !neverForCoordinator(name))])
 }
 
 /**
@@ -82,9 +83,10 @@ export function coordinatorWanted(extra: readonly string[], own = true): Set<str
  * @param registered - global tool names the coordinator's scope can see (before this restriction).
  * @param extra - names from `coordinatorExtraTools`.
  * @param own - include the plugin's own coordinator tools.
+ * @param matriarc - include `matriarc` (the coordinator's `coordinatorMatriarc` setting).
  */
-export function coordinatorAllow(registered: Iterable<string>, extra: readonly string[], own = true): string[] {
-  const wanted = coordinatorWanted(extra, own)
+export function coordinatorAllow(registered: Iterable<string>, extra: readonly string[], own = true, matriarc = false): string[] {
+  const wanted = coordinatorWanted(extra, own, matriarc)
   return [...new Set(registered)].filter(name => wanted.has(name)).sort()
 }
 

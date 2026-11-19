@@ -455,4 +455,8 @@ export const CSS = `
 .dco-settings-reset:disabled { cursor: default; opacity: 0.5; }
 .dco-settings-hint, .dco-settings-note { margin: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
 .dco-settings-note { padding-top: 4px; }
+/* Matriarc's "no navigator" notice, copied from dsh-matriarc's .dsh-matriarc-notice, -actions and -action. */
+.dco-matriarc-notice { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 2px 8px; margin-top: 8px; padding: 6px 8px; border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-state-warn-label); font-size: 11px; line-height: 16px; }
+.dco-matriarc-actions { display: flex; flex-wrap: wrap; gap: 2px 8px; }
+.dco-matriarc-action { flex: 0 0 auto; padding: 0; border: none; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
 `

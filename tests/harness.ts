@@ -73,6 +73,8 @@ export class FakeAgent {
   title = ''
   preset = 'default'
   teams = false
+  /** Matriarc switch, set by the fake `/matriarc on|off` command (`FakeHost.useMatriarc`). */
+  matriarc = false
   private readonly host: FakeHost
 
   constructor(host: FakeHost, id: string, cwd: string, agentPreset: string) {
@@ -288,6 +290,22 @@ export class FakeHost {
   providers: FakeProvider[] = []
   /** Calls that would change dsh's global default: `sessionController.selectModel` and `agentDefaultModel.saveSelection`. */
   readonly globalModelWrites: unknown[] = []
+  /** Lines run through the fake `commands` service, with their Session. */
+  readonly commandLines: { session: string; line: string }[] = []
+  /** Set to make the next `/matriarc` line settle as an error result with this text. */
+  matriarcError: string | undefined
+  /** The navigators the fake Matriarc command's hint lists (none: `[on|off]`). */
+  matriarcNavigators: string[] = ['nav']
+
+  /**
+   * Install a fake Matriarc plugin: its `/matriarc on|off` command (the fake `commands` service knows it from now on)
+   * and its global `matriarc` tool. Call it in `rig`'s `before`.
+   */
+  useMatriarc(): void {
+    this.matriarcLoaded = true
+    if (!this.globalTools.includes('matriarc')) this.globalTools.push('matriarc')
+  }
+  private matriarcLoaded = false
 
   readonly ctx: Record<string, unknown>
 
@@ -305,6 +323,21 @@ export class FakeHost {
         agent.teams = true
       },
       isEnabled: (agent: FakeAgent) => agent.teams,
+    })
+    // dsh's command runtime: only `/matriarc on|off` is known, and only once `useMatriarc` loaded it.
+    this.services.set('commands', {
+      list: () => host.matriarcLoaded
+        ? [{ name: 'matriarc', input: { hint: host.matriarcNavigators.length === 0 ? '[on|off]' : `[on [${host.matriarcNavigators.join('|')}]|off]` } }]
+        : [],
+      execute: async (agent: FakeAgent, line: string) => {
+        host.commandLines.push({ session: agent.id, line })
+        const match = /^\/matriarc (on|off)$/.exec(line)
+        if (match === null || !host.matriarcLoaded) return undefined
+        const error = host.matriarcError
+        if (error !== undefined) { host.matriarcError = undefined; return { commandId: `cmd-${host.commandLines.length}`, result: { kind: 'error', text: error } } }
+        agent.matriarc = match[1] === 'on'
+        return { commandId: `cmd-${host.commandLines.length}`, result: { kind: 'success' } }
+      },
     })
     this.services.set('userQuestions', {
       ask: (request: FakeHost['questions'][number]['request'] & { signal?: AbortSignal }) => new Promise((resolve, reject) => {
