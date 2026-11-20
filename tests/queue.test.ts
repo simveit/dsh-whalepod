@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import type { Notice, Timers } from '../src/host/notices.ts'
 import { TOOL } from '../src/host/names.ts'
 import { KEPT_NOTICES_MAX, WAITING_RECHECK_MS } from '../src/host/threads.ts'
-import { FakeHost, quietOf, tick, wakesOf, withCoordinator, type FakeAgent } from './harness.ts'
+import { FakeHost, offline, quietOf, tick, wakesOf, withCoordinator, type FakeAgent } from './harness.ts'
 
 const textOf = (m: { content: readonly { text: string }[] }) => m.content.map(c => c.text).join('\n')
 type R = Awaited<ReturnType<typeof withCoordinator>>
@@ -732,7 +732,8 @@ test('T1: the folder card waits for the turn that waiting notices open, as it di
   r.coordinator.steer = (message) => { steer(message); r.coordinator.startTurn() }
   // One turn of the user: a folder that needs their confirmation, while Task A reports its result.
   r.host.userTurn(r.coordinator, `Fix the build in ${outside}`)
-  const pending = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Fix the build', assignment: 'Make it build.', cwd: outside })
+  // No chat answered the inline card, so the folder waits for the card after the turn.
+  const pending = await offline(r.host, () => r.host.call(r.coordinator.id, TOOL.start, { title: 'Fix the build', assignment: 'Make it build.', cwd: outside }))
   assert.equal((pending['action'] as { kind: string }).kind, 'confirm-folder')
   await finish(r, a.lead, 'A done')
   assert.deepEqual([wakesOf(r.coordinator).length, r.host.questions.length], [0, 0], 'the notice waits, and so does the card')

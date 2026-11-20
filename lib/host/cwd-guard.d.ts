@@ -89,11 +89,6 @@ export declare function coordinatorFolderProblem(path: string, env: Pick<GuardEn
     /** Live executor folders of other coordinators (S9): a folder being set may not contain one. */
     othersExecutors?: readonly string[];
 }): string | undefined;
-/**
- * Absolute paths the user wrote in a message: `~`, `~/...` and `/...` tokens, including ones inside quotes or
- * backticks (which may contain spaces). Trailing punctuation is dropped.
- */
-export declare function pathMentions(text: string): string[];
 /** Longest folder path taken for an Executor Session, in characters; the `cwd` argument of `executor_start` has the same bound (tools.ts). */
 export declare const FOLDER_PATH_MAX = 1000;
 export type GuardResult = 
@@ -117,8 +112,7 @@ export type GuardResult =
 /**
  * Check one requested thread folder.
  * @param requested - the folder the coordinator asked for (absolute or `~` form).
- * @param userTexts - texts of messages the user typed in the coordinator chat.
  * @returns the real path to use, a confirmation the user must give for a real path, or an error message that tells
  * the coordinator how to proceed.
  */
-export declare function checkThreadFolder(requested: string, userTexts: readonly string[], env: GuardEnv): GuardResult;
+export declare function checkThreadFolder(requested: string, env: GuardEnv): GuardResult;

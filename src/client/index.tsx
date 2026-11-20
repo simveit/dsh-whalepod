@@ -6,6 +6,7 @@
  *   sidebar.session.row.trailing / .hover   a coordinator chat's count of Executor Sessions that need the user or run (row-decor.tsx)
  *   conversation.chat.user.before           "Assignment from the coordinator" above coordinator-written messages
  *   conversation.chat.turnTail              the welcome under the opening turn of a fresh coordinator chat
+ *   conversation.composer                   the folder card of executor_start as dsh's approval card (folder-approval.ts)
  * Copy comes from the locale service (namespace `dsh-coordinator`); components read coordinator state through the
  * slot renderer's `use<Name>` hooks bound from each registration's inject `hooks`.
  */
@@ -13,6 +14,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { HeaderAction, originOf, OriginLine, PanelIcon, Welcome } from './chrome.tsx'
 import { en, NS, zh, type Translate } from './locales.ts'
+import { FolderApproval, selectFolderApproval } from './folder-approval.ts'
 import { mountSettingsPage } from './settings.tsx'
 import { CoordinatorPanel, type PanelActions, type PickResult } from './panel.tsx'
 import { TYPERT_REMOTE, type CoordinatorRemote } from './remote.ts'
@@ -307,6 +309,10 @@ export async function apply(ctx: ClientContext): Promise<void> {
     uiCtx.slots.inject('conversation.chat.user.before', () => uiCtx.slots.register({
       name: 'conversation.chat.user.before', locale: NS, select: originOf,
     }, OriginLine as never))
+    // Ahead of the generic question form; dsh's own approval entry sits at priority 1 and computer use's at -1.
+    uiCtx.slots.inject('conversation.composer', () => uiCtx.slots.register({
+      name: 'conversation.composer', priority: -1, locale: NS, select: selectFolderApproval,
+    }, FolderApproval as never))
     uiCtx.slots.inject('conversation.chat.turnTail', () => uiCtx.slots.register({
       name: 'conversation.chat.turnTail', id: 'dsh-coordinator-welcome', order: 0, locale: NS,
       inject: (sessionId: string) => ({ hooks, sessionId, goHome, fillDraft: (text: string) => { fillDraft(uiCtx, sessionId, text) } }),

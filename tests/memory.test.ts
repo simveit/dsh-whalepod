@@ -15,7 +15,7 @@ import { MEMORY_EXECUTORS_MAX, MEMORY_REVISION_MAX, parseState, storedMemoryExec
 import {
   coordinatorMemoryContext, executorPromptSection, MEMORY_CONTEXT_ORDER, MEMORY_EXECUTOR_UPDATES_MAX, MEMORY_OFF_CONTEXT, MEMORY_UPDATES_MAX, MEMORY_UPDATES_WINDOW_MS, memoryExecutorsText, memoryOffLine, memoryTag, memoryWriterText,
 } from '../src/host/threads.ts'
-import { FakeAgent, FakeHost, rig, tick, withCoordinator, type Rig } from './harness.ts'
+import { FakeAgent, FakeHost, rig, tick, viaCard, withCoordinator, type Rig } from './harness.ts'
 
 async function restart(r: Rig, edit?: (state: Record<string, any>) => void): Promise<Rig> {
   r.host.dispose()
@@ -163,12 +163,12 @@ test('S: a runtime-context snapshot that carries the memory is never the user\'s
   assert.deepEqual(userTypedTexts(opened), ['Start a cleanup.'])
   assert.equal(turnOpenedByUser(opened), true)
   assert.equal(turnSawThreadData(opened), false)
-  // Through the service: the path written into the memory is not the user naming a folder.
+  // Through the service: the path written into the memory authorises nothing; the user's card decides, and a Reject
+  // leaves nothing started.
   r.host.userTurn(r.coordinator, 'Start a cleanup.')
   r.coordinator.append('user/message', snapshot)
-  const asked = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Cleanup', assignment: 'Clean up.', cwd: outside })
-  assert.notEqual((asked['action'] as { kind?: string } | undefined)?.kind, 'confirm-folder')
-  assert.match(String(asked['error']), /is outside your folder and the user has not named this folder in this chat\..*or your memory does not count/)
+  const { result: asked } = await viaCard(r.host, () => r.host.call(r.coordinator.id, TOOL.start, { title: 'Cleanup', assignment: 'Clean up.', cwd: outside }), 'Reject')
+  assert.match(String(asked['error']), /rejected the folder/)
   assert.equal(r.service.getState().threads.length, 0)
   r.host.dispose()
 })
@@ -564,9 +564,10 @@ test('B: a memory an executor wrote authorises nothing: no folder, and a turn th
   // The snapshot that carries it is no typed message, and the path in it is not the user naming a folder.
   r.host.userTurn(r.coordinator, 'Start a cleanup.')
   r.coordinator.append('user/message', snapshotEvent([{ name: 'dsh-coordinator:memory', text: memoryText(r, r.coordinator.id) }]))
-  const asked = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Cleanup', assignment: 'Clean up.', cwd: outside })
-  assert.notEqual((asked['action'] as { kind?: string } | undefined)?.kind, 'confirm-folder')
-  assert.match(String(asked['error']), /is outside your folder and the user has not named this folder in this chat\..*or your memory does not count/)
+  const threads = r.service.getState().threads.length
+  const { result: asked } = await viaCard(r.host, () => r.host.call(r.coordinator.id, TOOL.start, { title: 'Cleanup', assignment: 'Clean up.', cwd: outside }), 'Reject')
+  assert.match(String(asked['error']), /rejected the folder/)
+  assert.equal(r.service.getState().threads.length, threads)
   // A write is not a Report: it wakes nobody and makes no notice of its own.
   assert.equal(r.service.getState().threads.find(t => t.id === idA)!.lastReport, undefined)
   // The documented limit (docs/security.md T3): the snapshot is in every request, so it is not counted as Executor

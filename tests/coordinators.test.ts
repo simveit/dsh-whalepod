@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { COORDINATORS_MAX, discoverBase } from '../src/host/ids.ts'
 import { TOOL } from '../src/host/names.ts'
-import { FakeAgent, FakeHost, rig, tick, withCoordinator, type Rig } from './harness.ts'
+import { FakeAgent, FakeHost, offline, rig, tick, viaCard, withCoordinator, type Rig } from './harness.ts'
 
 const textOf = (m: { content: readonly { text: string }[] }) => m.content.map(c => c.text).join('\n')
 /** Notices a coordinator got (woken or quiet), not its opening or role messages. */
@@ -240,10 +240,16 @@ test('notices of coordinator A never reach B, also when the row is gone before t
   assert.equal(notices(r.a).length, before.a + 1)
   assert.equal(notices(r.b).length, before.b)
   assert.match(textOf(notices(r.a).at(-1)!.message), /A is done/)
-  // A folder confirmation of A, denied: the row is deleted at once, the notice still goes to A.
+  // A folder card of A, rejected inline: it is in A's chat, the call fails, and B hears nothing.
   const outside = join(r.home, 'dev', 'outside')
   mkdirSync(outside, { recursive: true })
-  const pending = await startIn(r, r.a, 'Outside work', { cwd: outside }, `Work in ${outside}`)
+  const inline = await viaCard(r.host, () => startIn(r, r.a, 'Outside work', { cwd: outside }, `Work in ${outside}`), 'Reject')
+  assert.equal(inline.card.request.agent?.id, r.a.id, 'the inline card is in the owner\'s chat')
+  assert.match(String(inline.result['error']), /rejected the folder/)
+  await tick(80)
+  assert.equal(notices(r.b).length, before.b)
+  // A folder confirmation of A on the row (no chat showed the card), denied: the row is deleted at once, the notice still goes to A.
+  const pending = await offline(r.host, () => startIn(r, r.a, 'Outside work', { cwd: outside }, `Work in ${outside}`))
   assert.equal(pending['status'], 'needs-user')
   assert.equal(r.host.questions.at(-1)!.request.agent?.id, r.a.id, 'the card is in the owner\'s chat')
   await r.service.confirmFolder(pending['id'], 'deny')
@@ -272,18 +278,19 @@ test('a folder change applies to new threads only; an existing folder below the 
   // A's threads still go to A's folder.
   const ofA = await startIn(r, r.a, 'Work of A')
   assert.equal(ofA['cwd'], join(r.root, 'work-of-a'))
-  // An existing repository below the new folder: the user must name it, then confirm.
+  // An existing repository below the new folder: never started without the user's confirmation.
   mkdirSync(join(work, 'repo'), { recursive: true })
-  const refused = await startIn(r, r.b, 'Repo work', { cwd: join(work, 'repo') })
-  assert.match(String(refused['error']), /lies inside, a folder the plugin did not make/)
+  const refused = await viaCard(r.host, () => startIn(r, r.b, 'Repo work', { cwd: join(work, 'repo') }), 'Reject')
+  assert.match(String(refused.result['error']), /rejected the folder/)
   r.host.userTurn(r.b, `Use ${join(work, 'repo')}`)
-  const asked = await r.host.call(r.b.id, TOOL.start, { title: 'Repo work', brief: 'b', cwd: join(work, 'repo') })
+  const asked = await offline(r.host, () => r.host.call(r.b.id, TOOL.start, { title: 'Repo work', brief: 'b', cwd: join(work, 'repo') }))
   assert.deepEqual(asked['action'], { kind: 'confirm-folder', path: join(work, 'repo'), why: 'existing' })
-  // A folder the user typed in B's chat does not authorise A.
+  // A folder the user typed in B's chat does not authorise A: A's own chat gets the card, and nothing starts before the answer.
   mkdirSync(join(work, 'other'), { recursive: true })
   r.host.userTurn(r.b, `Also ${join(work, 'other')}`)
-  const crossed = await startIn(r, r.a, 'Other work in A', { cwd: join(work, 'other') })
-  assert.match(String(crossed['error']), /not named this folder/)
+  const crossed = await viaCard(r.host, () => startIn(r, r.a, 'Other work in A', { cwd: join(work, 'other') }), 'Reject')
+  assert.equal(crossed.card.request.agent?.id, r.a.id)
+  assert.match(String(crossed.result['error']), /rejected the folder/)
   // A folder a thread works in, the home folder, or a coordinator home cannot become a folder.
   assert.throws(() => r.service.setCoordinatorFolder({ coordinatorId: r.bId, path: join(work, 'late-work', 'x') }), /inside the folder of a delegated session/)
   assert.throws(() => r.service.setCoordinatorFolder({ coordinatorId: r.bId, path: r.home }), /home folder/)

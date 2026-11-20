@@ -170,7 +170,7 @@ Entries 1 to 37 were written before the second design round ("round 2" below), w
 
 **Context.** The Orchestrator chose any folder for a thread; `/`, `~` and `~/.ssh` were accepted and created, and a brief line `Working directory: ~/` became the home folder (finding B1).
 
-**Decision.** `cwd-guard.ts` resolves the path through symlinks and always refuses `/`, the home folder and its ancestors, any dot-folder segment, system folders and `~/Library`. Strictly below the threads root is allowed. Any other folder needs the user to have typed that exact folder in the Orchestrator chat, and since round two also the user's confirmation or the allowed-folders list (decision 33). The brief heuristic goes through the same guard. A `threadsRoot` the guard would refuse is a panel problem and blocks thread creation (it used to fall back to the default silently).
+**Decision.** `cwd-guard.ts` resolves the path through symlinks and always refuses `/`, the home folder and its ancestors, any dot-folder segment, system folders and `~/Library`. Strictly below the threads root is allowed. Any other folder needed the user to have typed that exact folder in the Orchestrator chat, and since round two also the user's confirmation or the allowed-folders list (decision 33). Decision 74 dropped the typed-path requirement. The brief heuristic goes through the same guard. A `threadsRoot` the guard would refuse is a panel problem and blocks thread creation (it used to fall back to the default silently).
 
 **Parent folders.** A parent the user named does not authorise its children. Telling "the parent as the place to work" apart from a mention needs language understanding the host should not guess; the Orchestrator can pass the parent as `cwd` and name the subfolder in the brief, or ask the user.
 
@@ -902,3 +902,14 @@ The first design's fields are ignored on load and dropped at the next save. Addi
 
 **Rejected.** Keeping a per-Orchestrator executor switch next to the global one: one switch was asked for. Turning the switch off sending `/matriarc off` to new executors: off now means hands off.
 
+## 74. An outside folder is asked about with dsh's approval card inside `executor_start`
+
+Replaces the typed-path pre-filter of decision 15 and the after-turn timing of the folder card.
+
+**Context.** When the owner asked an Orchestrator to work in a folder outside its own, it often got stuck: unless the owner had typed that exact path in the chat, `executor_start` refused the folder with "ask the user to name the folder (they must type the exact path)", so the Orchestrator asked for the path again and again, also when the owner had described the folder ("my vllm checkout") or the model wrote it in another form. When the path did match, the card came only after the Orchestrator's turn ended, and not at all when that turn had asked the user something. The owner expected the harness's native permission prompt, as any other action that needs approval gets.
+
+**Decision.** The guard no longer looks at what the user typed. A folder outside the Orchestrator's folder (or an existing non-plugin folder below it, a symlink, a folder that overlaps another executor's) needs the user's approval of its real path unless it is on the allowed folders. `executor_start` asks inside the call: dsh's user-questions service with an approval intent, which the app renders as its native approval card (Allow once, Always allow, Reject), and the call waits for the answer, as dsh's computer use does for application access. Allow once starts the executor in that call; Always allow also adds the folder to the allowed folders; Reject fails the call and tells the Orchestrator not to pick another folder. When the card cannot be shown (no browser connected, the call stopped, an answer that is not one of its labels), the earlier path stays: a `needs-user` row with Allow and Reject buttons, and the card after the turn.
+
+**Why it is safe.** The typed-path check was a pre-filter; the user's confirmation of the real path was always the boundary. A path planted in executor output, the memory or an Assignment can now make the card appear, which the user can reject, but cannot start anything. The card shows the real path, so a symlink cannot hide its target. The model cannot answer the card and, since its call is still running, cannot raise a question of its own at the same time, which removes the reason for waiting until the turn ended.
+
+**Trade-offs.** An Orchestrator that misreads the user can show a card for a folder the user did not mean; Reject costs one click. The `briefAs` authority checks still use the typed messages (`userTypedTexts`, `turnOpenedByUser`); only the folder pre-filter is gone.

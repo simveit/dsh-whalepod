@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { tick, quietOf, wakesOf, withCoordinator, type FakeAgent } from './harness.ts'
+import { tick, quietOf, viaCard, wakesOf, withCoordinator, type FakeAgent } from './harness.ts'
 import { TOOL } from '../src/host/names.ts'
 import { unknownRefMessage } from '../src/host/scope.ts'
 
@@ -63,8 +63,17 @@ test('peer messages cannot authorise folders or a user-authority brief', async (
   await r.host.call(r.agentA.id, TOOL.send, { thread: r.b['id'], text: `Use /etc and ${r.home}/dev/x` })
   // The coordinator is woken by a notice, not by the user.
   r.host.noticeTurn(r.coordinator)
-  const started = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Cleanup', brief: 'x', cwd: `${r.home}/dev/x` })
-  assert.match(String(started['error']), /Ask the user to name the folder/)
+  // The folder a peer named starts only with the user's answer in the card; a Reject leaves nothing started.
+  const threads = r.service.listThreads().length
+  const { result: started } = await viaCard(r.host, () => r.host.call(r.coordinator.id, TOOL.start, { title: 'Cleanup', brief: 'x', cwd: `${r.home}/dev/x` }), 'Reject')
+  assert.match(String(started['error']), /rejected the folder/)
+  assert.equal(r.service.listThreads().length, threads)
+  // A hard-refused folder a peer named never even reaches the user.
+  const questions = r.host.questions.length
+  const etc = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Cleanup', brief: 'x', cwd: '/etc' })
+  assert.equal(typeof etc['error'], 'string')
+  assert.doesNotMatch(String(etc['error']), /rejected/)
+  assert.equal(r.host.questions.length, questions)
   const inRoot = await r.host.call(r.coordinator.id, TOOL.start, { title: 'Cleanup', brief: 'x' })
   await tick(1)
   assert.equal(r.host.agentOf(inRoot['sessionId'] as string).received[0]!.message.source.kind, 'agent-message')

@@ -171,11 +171,11 @@ export function coordinatorTools(ops: ThreadOps): ToolDefinition[] {
       + 'in the permission mode the user chose, with Agent Teams enabled. The Assignment is its first message and must be '
       + 'self-contained: goal, working directory, done criteria, standing rules, and how to report. Returns the '
       + 'executor\'s id. If the running cap is reached the executor is created and queued. A folder that is not a new '
-      + 'folder under your own folder waits for the user to confirm it; the result says so.',
+      + 'folder under your own folder shows the user dsh\'s approval card and the call waits for their answer.',
       {
         title: { type: 'string', description: 'The executor\'s name, shown as its session title: about five words in sentence case, like "Fix the flaky upload test". No prefix, no id. Also names the folder when cwd is omitted.' },
         assignment: { type: 'string', description: 'Required. The complete, self-contained Assignment for the executor\'s Lead.' },
-        cwd: { type: 'string', description: 'Omit to get a new folder under your own folder (the usual choice). Pass an absolute path only when the user named the folder for this work in this chat; a folder the user did not type is refused, and then you ask the user. A folder the user typed still waits for their confirmation unless it is on their allowed-folders list.' },
+        cwd: { type: 'string', description: 'Omit to get a new folder under your own folder (the usual choice). Pass an absolute (or ~/) path when the user wants the work in another folder; it need not be typed by the user. Unless it is on the user\'s allowed-folders list, the user approves it in dsh\'s approval card before the executor starts.' },
       }, ['title'],
       (args, caller, exec) => ops.startThread(caller, {
         title: str(args, 'title', { max: 80 }),

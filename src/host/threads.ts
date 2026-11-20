@@ -15,7 +15,7 @@ import { basename, dirname, join } from 'node:path'
 import type {
   ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, MatriarcState, ModelChoices, ModelHealth, ModelOption, ModelSettingState, NewCoordinatorSetup, ReportKind, SetCoordinatorMemoryResult, ThreadAction, ThreadInfo, ThreadPermission, ThreadPermissionState, ThreadReport,
 } from '../types.ts'
-import { isUserTyped, turnOpenedByUser, turnSawThreadData, userTypedTexts } from './authority.ts'
+import { isUserTyped, turnOpenedByUser, turnSawThreadData } from './authority.ts'
 import { coordinatorAllow, coordinatorWanted, knownFromRestrictError } from './coordinator-tools.ts'
 import { checkThreadFolder, coordinatorFolderProblem, hasControl, isWithin, lexical, nodeGuardFs, protectedProblem, realResolve, refusal, type GuardFs } from './cwd-guard.ts'
 import type {
@@ -67,6 +67,8 @@ const THREAD_DENIED_TOOLS = ['plugin_manager', 'plugin_market']
 /** The panel's wording for an Executor Session that cannot run because auto review is gone. */
 const AUTO_GONE = 'auto review is not loaded: dsh cannot resume this Executor Session, which was started in auto mode, until it is enabled again'
 const MESSAGE_SOURCE = 'dsh-coordinator'
+/** The labels of the folder card; dsh's approval card shows them as its buttons. */
+const FOLDER_LABELS = { once: 'Allow once', always: 'Always allow', reject: 'Reject' } as const
 const FULL_PAGE_CHARS = 7000
 const RECENT_ENTRIES = 15
 /** Cap of the history part of `thread_read recent`. */
@@ -4177,7 +4179,7 @@ export class ThreadService implements ThreadOps {
     return [...homes]
   }
 
-  async startThread(caller: SessionId, input: { title: string; brief: string; cwd?: string }, _signal: AbortSignal): Promise<ToolView> {
+  async startThread(caller: SessionId, input: { title: string; brief: string; cwd?: string }, signal: AbortSignal): Promise<ToolView> {
     await this.validated
     const coord = this.callerCoordinator(caller)
     this.checkFolder(coord)
@@ -4191,13 +4193,13 @@ export class ThreadService implements ThreadOps {
     const id = newThreadId(new Set([...this.records.keys(), ...this.reservedIds, ...this.memoryWriterIds()]), this.threadIdRandom)
     this.reservedIds.add(id)
     try {
-      return await this.startReserved(coord, id, title, input)
+      return await this.startReserved(coord, id, title, input, signal)
     } finally {
       this.reservedIds.delete(id)
     }
   }
 
-  private async startReserved(coord: CoordinatorRecord, id: string, title: string, input: { brief: string; cwd?: string }): Promise<ToolView> {
+  private async startReserved(coord: CoordinatorRecord, id: string, title: string, input: { brief: string; cwd?: string }, signal: AbortSignal): Promise<ToolView> {
     const notes: string[] = []
     // Only this coordinator's own chat counts: a folder the user typed in another coordinator's chat authorises nothing here.
     const log = await this.coordinatorLog(coord)
@@ -4225,15 +4227,27 @@ export class ThreadService implements ThreadOps {
     const wanted = input.cwd ?? fromBrief
     let cwd: string
     if (wanted !== undefined) {
-      const checked = checkThreadFolder(wanted, userTypedTexts(log), {
+      const checked = checkThreadFolder(wanted, {
         home: this.home, ownFolder: coord.folder, fs: this.fs, allowed: this.allowedFolders.filter(f => this.allowedConfirmed.has(f)), taken: this.takenFolders(),
         coordinator: this.coordinatorHomes(), protectedRoots: this.dshHomes, pluginFolders: this.pluginFolders(),
         coordinatorFolders: this.coordinatorFolders(), otherHomes: this.otherHomes(coord, 'executor'),
       })
       if (!checked.ok && checked.confirm !== true) throw new Error(fromBrief === undefined ? checked.error : `the Assignment names the working directory ${pathText(fromBrief, 300)}, but ${checked.error}`)
       if (fromBrief !== undefined) notes.push('cwd was not given; using the working directory the Assignment names')
-      if (!checked.ok) return this.pendConfirmation({ id, coordinatorId: coord.id, title, brief: input.brief, briefAs, path: checked.path, why: checked.why, notes })
-      cwd = checked.path
+      if (checked.ok) {
+        cwd = checked.path
+      } else {
+        // The user decides in dsh's native approval card on this very call, the way dsh asks before any other action
+        // that needs approval. Only when no chat can show it does the Executor Session wait on the row buttons.
+        const asked = await this.askFolderInCall(coord, title, { path: checked.path, why: checked.why, at: this.now() }, signal)
+        if (asked === undefined) return this.pendConfirmation({ id, coordinatorId: coord.id, title, brief: input.brief, briefAs, path: checked.path, why: checked.why, notes })
+        if (asked === 'deny') {
+          say(`Executor Session ${id}: the user rejected folder ${checked.path}`)
+          throw new Error(`the user rejected the folder ${pathText(checked.path, 300)}; the Executor Session was not started. Ask the user how they want to proceed; do not pick another folder on your own.`)
+        }
+        cwd = this.allowFolder(checked.path, asked)
+        say(`Executor Session ${id}: the user allowed folder ${cwd}${asked === 'always' ? ' (always)' : ''}`)
+      }
     } else {
       mkdirSync(coord.folder, { recursive: true })
       const root = this.fs.realpath(coord.folder)
@@ -4279,6 +4293,72 @@ export class ThreadService implements ThreadOps {
     return { ...rec.info, ...(action === undefined ? {} : { action }) }
   }
 
+  /** The native approval card for one folder: dsh renders `intent: approval` as its Allow once / Always allow / Reject card. */
+  private folderQuestion(title: string, confirm: NonNullable<ThreadFacts['confirm']>, questionId: string) {
+    return {
+      id: questionId,
+      header: 'Executor Session folder',
+      question: `Let the Executor Session "${inlineUntrusted(title, 80)}" work in ${this.shown(confirm.path)}?`,
+      detail: `${this.shown(confirm.path)} ${this.confirmReason(confirm)}. `
+        + '"Always allow" adds it to the allowed folders on the Orchestrator page, for every Orchestrator; you can remove it there again.',
+      options: [{ label: FOLDER_LABELS.once }, { label: FOLDER_LABELS.always }, { label: FOLDER_LABELS.reject }],
+      intent: { kind: 'approval' as const, approve: FOLDER_LABELS.once, reject: FOLDER_LABELS.reject, always: FOLDER_LABELS.always },
+    }
+  }
+
+  /** The decision a folder card's answer names, or undefined when it is not one of the card's own labels. */
+  private folderDecision(answer: { answers: { id: string; selected: string[]; custom?: string }[] }, questionId: string): 'once' | 'always' | 'deny' | undefined {
+    const mine = answer.answers.length === 1 ? answer.answers.find(item => item.id === questionId) : undefined
+    const picked = mine?.selected.length === 1 && mine.custom === undefined ? mine.selected[0] : undefined
+    return picked === FOLDER_LABELS.once ? 'once' : picked === FOLDER_LABELS.always ? 'always' : picked === FOLDER_LABELS.reject ? 'deny' : undefined
+  }
+
+  /**
+   * Ask for a folder inside the `executor_start` call: dsh's native approval card in the coordinator chat, which holds
+   * the call until the user answers (the pattern dsh's own tools use, e.g. computer use's application access). The
+   * model cannot answer it and cannot ask a question of its own meanwhile, because its call is still running.
+   * Returns undefined when no chat can show the card (no user-questions service, no connected browser, the call was
+   * stopped, or an answer that is not one of the card's labels); the caller then falls back to the row buttons.
+   */
+  private async askFolderInCall(coord: CoordinatorRecord, title: string, confirm: NonNullable<ThreadFacts['confirm']>, signal: AbortSignal): Promise<'once' | 'always' | 'deny' | undefined> {
+    const questions = this.ctx.get('userQuestions' as never) as UserQuestions | undefined
+    const agent = coord.sessionId == null ? undefined : this.ctx.agents.get(coord.sessionId)
+    if (questions === undefined || agent === undefined || signal.aborted) return undefined
+    const questionId = `dsh-coordinator-confirm-folder:${randomBytes(4).toString('hex')}`
+    try {
+      const answer = await questions.ask({ agent, signal, questions: [this.folderQuestion(title, confirm, questionId)] })
+      if (signal.aborted || this.disposed) return undefined
+      const decision = this.folderDecision(answer, questionId)
+      if (decision === undefined) say(`the folder card for ${confirm.path} returned no answer of its own; the row buttons remain`)
+      return decision
+    } catch (error) {
+      say(`no folder card for ${confirm.path} in the Orchestrator chat (${errorText(error)}); the row buttons remain`)
+      return undefined
+    }
+  }
+
+  /**
+   * A folder the user just allowed, checked again (it must still be the same real path and pass the hard refusals),
+   * and with "Always allow" added to the allowed-folders list. Returns the real path.
+   */
+  private allowFolder(path: string, decision: 'once' | 'always', owner?: CoordinatorRecord): string {
+    const real = realResolve(path, this.fs)
+    const refused = (hasControl(real) ? 'the path contains a control character or a line break' : undefined)
+      ?? refusal(real, { home: this.home, fs: this.fs }) ?? protectedProblem(real, this.dshHomes, { home: this.home, fs: this.fs })
+      ?? (this.coordinatorHomes().some(home => isWithin(real, home)) ? 'it is an Orchestrator\'s own folder or contains one' : undefined)
+      ?? (this.otherHomes(owner, 'executor').some(home => isWithin(home, real)) ? 'it is inside another Orchestrator\'s home' : undefined)
+      ?? (this.coordinatorFolders().some(folder => isWithin(real, folder)) ? 'it contains an Orchestrator\'s folder' : undefined)
+    if (real !== path || refused !== undefined) {
+      throw new Error(`the folder changed or is refused now (${refused ?? `it resolves to ${this.shown(real)}`}); start the Executor Session again`)
+    }
+    if (decision === 'always') {
+      if (!this.allowedFolders.includes(real)) this.allowedFolders = [...this.allowedFolders, real]
+      this.allowedConfirmed.add(real)
+      this.bump()
+    }
+    return real
+  }
+
   /**
    * Raise the folder confirmation as a native dsh question card in the coordinator chat (no model tool call): the
    * user-questions service forwards it to the browser that shows the chat. It needs a connected browser and does not
@@ -4321,26 +4401,11 @@ export class ThreadService implements ThreadOps {
       if (rec.confirmCard === controller) delete rec.confirmCard
       return
     }
-    const labels = { once: 'Allow once', always: 'Always allow', reject: 'Reject' }
     // Bound to this request: its own question id, and an answer counts only when it names that id and one of these labels.
     const questionId = `dsh-coordinator-confirm-folder:${rec.info.id}:${randomBytes(4).toString('hex')}`
     try {
-      const answer = await questions.ask({
-        agent: coordinator,
-        signal: controller.signal,
-        questions: [{
-          id: questionId,
-          header: 'Executor Session folder',
-          question: `Let the Executor Session "${inlineUntrusted(rec.info.title, 80)}" work in ${this.shown(confirm.path)}?`,
-          detail: `${this.shown(confirm.path)} ${this.confirmReason(confirm)}. `
-            + '"Always allow" adds it to the allowed folders on the Orchestrator page, for every Orchestrator; you can remove it there again.',
-          options: [{ label: labels.once }, { label: labels.always }, { label: labels.reject }],
-          intent: { kind: 'approval', approve: labels.once, reject: labels.reject, always: labels.always },
-        }],
-      })
-      const mine = answer.answers.length === 1 ? answer.answers.find(item => item.id === questionId) : undefined
-      const picked = mine?.selected.length === 1 && mine.custom === undefined ? mine.selected[0] : undefined
-      const decision = picked === labels.once ? 'once' : picked === labels.always ? 'always' : picked === labels.reject ? 'deny' : undefined
+      const answer = await questions.ask({ agent: coordinator, signal: controller.signal, questions: [this.folderQuestion(rec.info.title, confirm, questionId)] })
+      const decision = this.folderDecision(answer, questionId)
       if (decision === undefined) say(`Executor Session ${rec.info.id}: the folder card returned no answer of its own; the row buttons remain`)
       if (decision !== undefined && rec.facts.confirm !== undefined && !this.disposed) await this.confirmFolder(rec.info.id, decision)
     } catch {
@@ -4419,21 +4484,7 @@ export class ThreadService implements ThreadOps {
         alert: `The user denied the folder ${pathText(confirm.path, 300)} for Executor Session ${rec.info.id}; it was not started. Tell the user and ask how they want to proceed; do not pick another folder on your own.` })
       return { denied: rec.info.id }
     }
-    // The folder is checked again: it must still be the same real path and pass the hard refusals.
-    const real = realResolve(confirm.path, this.fs)
-    const owner = this.coordinators.get(rec.info.coordinatorId)
-    const refused = (hasControl(real) ? 'the path contains a control character or a line break' : undefined)
-      ?? refusal(real, { home: this.home, fs: this.fs }) ?? protectedProblem(real, this.dshHomes, { home: this.home, fs: this.fs })
-      ?? (this.coordinatorHomes().some(home => isWithin(real, home)) ? 'it is an Orchestrator\'s own folder or contains one' : undefined)
-      ?? (this.otherHomes(owner, 'executor').some(home => isWithin(home, real)) ? 'it is inside another Orchestrator\'s home' : undefined)
-      ?? (this.coordinatorFolders().some(folder => isWithin(real, folder)) ? 'it contains an Orchestrator\'s folder' : undefined)
-    if (real !== confirm.path || refused !== undefined) {
-      throw new Error(`the folder changed or is refused now (${refused ?? `it resolves to ${this.shown(real)}`}); deny it and ask the Orchestrator to start the Executor Session again`)
-    }
-    if (decision === 'always') {
-      if (!this.allowedFolders.includes(real)) this.allowedFolders = [...this.allowedFolders, real]
-      this.allowedConfirmed.add(real)
-    }
+    const real = this.allowFolder(confirm.path, decision, this.coordinators.get(rec.info.coordinatorId))
     this.records.delete(rec.info.id)
     say(`Executor Session ${rec.info.id}: the user allowed folder ${real}${decision === 'always' ? ' (always)' : ''}`)
     try {

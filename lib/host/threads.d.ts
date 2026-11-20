@@ -958,7 +958,7 @@ export declare class ThreadService implements ThreadOps {
         title: string;
         brief: string;
         cwd?: string;
-    }, _signal: AbortSignal): Promise<ToolView>;
+    }, signal: AbortSignal): Promise<ToolView>;
     private startReserved;
     /**
      * A folder that needs the user's confirmation: the thread is recorded without a Session, shows as "Needs you:
@@ -968,6 +968,23 @@ export declare class ThreadService implements ThreadOps {
     private pendConfirmation;
     /** The thread row as the tools return it, with the action the user can take. */
     private threadView;
+    /** The native approval card for one folder: dsh renders `intent: approval` as its Allow once / Always allow / Reject card. */
+    private folderQuestion;
+    /** The decision a folder card's answer names, or undefined when it is not one of the card's own labels. */
+    private folderDecision;
+    /**
+     * Ask for a folder inside the `executor_start` call: dsh's native approval card in the coordinator chat, which holds
+     * the call until the user answers (the pattern dsh's own tools use, e.g. computer use's application access). The
+     * model cannot answer it and cannot ask a question of its own meanwhile, because its call is still running.
+     * Returns undefined when no chat can show the card (no user-questions service, no connected browser, the call was
+     * stopped, or an answer that is not one of the card's labels); the caller then falls back to the row buttons.
+     */
+    private askFolderInCall;
+    /**
+     * A folder the user just allowed, checked again (it must still be the same real path and pass the hard refusals),
+     * and with "Always allow" added to the allowed-folders list. Returns the real path.
+     */
+    private allowFolder;
     /**
      * Raise the folder confirmation as a native dsh question card in the coordinator chat (no model tool call): the
      * user-questions service forwards it to the browser that shows the chat. It needs a connected browser and does not

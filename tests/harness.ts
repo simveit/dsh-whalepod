@@ -272,6 +272,8 @@ export class FakeHost {
   globalTools: string[] = ['terminal_open', 'terminal_send', 'create_worktree', 'session_search', 'mcp__files__write', 'working_directory']
   /** Monotonic tool guards registered with `ctx.tools.guard`. */
   readonly guards: ((exec: unknown) => string | undefined)[] = []
+  /** false: no chat can show a question card (no connected browser), so `ask` fails at once, as dsh's NO_PROVIDER. */
+  questionsLive = true
   /** Questions raised with `ctx.userQuestions.ask`, waiting for an answer. */
   readonly questions: { request: { questions: { id?: string; question: string; options?: { label: string }[] }[]; agent?: { id: string } }; answer: (label: string, id?: string) => void; raw: (answer: unknown) => void; cancelled: boolean }[] = []
   /** Agent presets known to the fake registry, and registrations/recompositions it saw. */
@@ -344,6 +346,7 @@ export class FakeHost {
     })
     this.services.set('userQuestions', {
       ask: (request: FakeHost['questions'][number]['request'] & { signal?: AbortSignal }) => new Promise((resolve, reject) => {
+        if (!host.questionsLive) { reject(Object.assign(new Error('no user-questions answerer accepted the request'), { code: 'NO_PROVIDER' })); return }
         // As dsh: the answer names the question it answers by its id.
         const entry = {
           request, cancelled: false,
@@ -723,6 +726,56 @@ export class FakeHost {
 }
 
 export const tick = (ms = 0) => new Promise(r => setTimeout(r, ms))
+
+/**
+ * Run `run` while no chat can show a question card (`questionsLive = false`), so `executor_start` takes the offline
+ * path for a folder that needs the user: a 'needs-user' row and the card after the turn ends.
+ */
+export async function offline<T>(host: FakeHost, run: () => Promise<T>): Promise<T> {
+  host.questionsLive = false
+  try {
+    return await run()
+  } finally {
+    host.questionsLive = true
+  }
+}
+
+/** Wait (bounded) until `host.questions` has more than `before` entries; returns the newest. */
+export async function nextQuestion(host: FakeHost, before: number, waitMs = 500): Promise<FakeHost['questions'][number]> {
+  for (let waited = 0; host.questions.length <= before; waited += 2) {
+    if (waited > waitMs) throw new Error('no question card was raised')
+    await tick(2)
+  }
+  return host.questions.at(-1)!
+}
+
+/**
+ * Start a call that must raise the inline folder card and hold until the user answers: checks that it neither returns
+ * nor creates a Session before the answer, then answers `label` and returns the call's result and the card.
+ */
+export async function viaCard(host: FakeHost, start: () => Promise<Record<string, unknown>>, label: string): Promise<{ result: Record<string, unknown>; card: FakeHost['questions'][number] }> {
+  const before = host.questions.length
+  const creates = host.creates
+  let settled = false
+  const call = start()
+  void call.then(() => { settled = true }, () => { settled = true })
+  const card = await nextQuestion(host, before)
+  await tick(5)
+  if (settled) throw new Error('the call returned before the user answered the folder card')
+  if (host.creates !== creates) throw new Error('a Session was created before the user answered the folder card')
+  card.answer(label)
+  return { result: await call, card }
+}
+
+/**
+ * Answer the inline folder card a pending `executor_start` call raises, then return the call's result. `call` must
+ * have been started (not awaited) after `before = host.questions.length` was read.
+ */
+export async function answerInline<T>(host: FakeHost, before: number, call: Promise<T>, label: string): Promise<T> {
+  const card = await nextQuestion(host, before)
+  card.answer(label)
+  return await call
+}
 
 /** The messages that woke an agent (see `FakeAgent.received`), after a coordinator chat's opening message. */
 export const wakesOf = (agent: FakeAgent) => agent.received.filter(r => r.wake === true && !r.message.id.includes(':opening:'))

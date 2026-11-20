@@ -5,6 +5,7 @@ All notable changes to this plugin are listed here. Versions follow [Semantic Ve
 ## 0.6.1 - 2026-11-20
 
 - The New Orchestrator setup step no longer shows a second "Matriarc in Executor Sessions" toggle. The toggle stays in one place, under "Executor Sessions run in" at the top of the Orchestrator page, which stays visible while the setup step is open.
+- Starting work in a folder outside the Orchestrator's own folder no longer gets stuck asking you to type the folder's exact path. The Orchestrator passes the folder you mean, and `executor_start` shows the harness's own approval card in the chat (Allow once, Always allow, Reject) and waits for your answer. Allow once starts the Executor Session there, Always allow also adds the folder to the allowed folders, and Reject stops it without trying another folder. Only when the card cannot be shown does the Executor Session wait for your confirmation on the Orchestrator page, as before.
 
 ## 0.6.0 - 2026-11-20
 

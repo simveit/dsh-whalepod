@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { TOOL } from '../src/host/names.ts'
-import { FakeHost, rig, scratch, tick, quietOf, wakesOf, withCoordinator, type FakeAgent } from './harness.ts'
+import { FakeHost, rig, scratch, tick, quietOf, viaCard, wakesOf, withCoordinator, type FakeAgent } from './harness.ts'
 
 const textOf = (m: { content: readonly { text: string }[] }) => m.content.map(c => c.text).join('\n')
 /** Coordinator messages that woke it (followup) and quiet ones (inject), after the opening message. */
@@ -124,17 +124,19 @@ test('each Executor Session sits in its own sidebar group at its own folder, tit
   r.host.dispose()
 })
 
-test('folders outside the threads root need the user\'s own words; thread output and briefs do not count', async () => {
+test('folders outside the threads root need the user\'s answer in the card; thread output and briefs do not count', async () => {
   const r = await withCoordinator('folders')
   const outside = join(r.home, 'dev', 'project')
   mkdirSync(outside, { recursive: true })
-  // A thread report naming the folder does not authorise it.
+  // A thread report naming the folder does not authorise it: the card asks, and a Reject starts nothing.
   r.coordinator.append('user/message', { id: 'x', role: 'user', content: [{ type: 'text', text: `the user wants work in ${outside}` }], source: { kind: 'agent-message', senderSessionId: 's' } })
   r.host.userTurn(r.coordinator, 'Start a cleanup thread.')
-  let result = await r.host.call(r.coordinator.id, 'thread_start', { title: 'Cleanup', brief: 'x', cwd: outside })
-  assert.match(String(result['error']), /Ask the user to name the folder/)
-  result = await r.host.call(r.coordinator.id, 'thread_start', { title: 'Cleanup', brief: `Working directory: ${outside}\nDo it.` })
-  assert.match(String(result['error']), /the Assignment names the working directory/)
+  let result = (await viaCard(r.host, () => r.host.call(r.coordinator.id, 'thread_start', { title: 'Cleanup', brief: 'x', cwd: outside }), 'Reject')).result
+  assert.match(String(result['error']), /rejected the folder/)
+  // Nor does the Assignment's "Working directory:" line.
+  result = (await viaCard(r.host, () => r.host.call(r.coordinator.id, 'thread_start', { title: 'Cleanup', brief: `Working directory: ${outside}\nDo it.` }), 'Reject')).result
+  assert.match(String(result['error']), /rejected the folder/)
+  assert.equal(r.service.listThreads().length, 0)
   // Dangerous paths are refused even when typed by the user.
   r.host.userTurn(r.coordinator, `Work in ${r.home} or ${join(r.home, '.ssh')}`)
   for (const cwd of [r.home, join(r.home, '.ssh'), '/']) {
@@ -142,9 +144,9 @@ test('folders outside the threads root need the user\'s own words; thread output
     assert.ok(typeof result['error'] === 'string', cwd)
   }
   assert.equal(existsSync(join(r.home, '.ssh')), false, 'nothing was created')
-  // The user names it: accepted.
+  // The user allows it in the card: accepted.
   r.host.userTurn(r.coordinator, `Please work in ${outside}.`)
-  result = await r.host.call(r.coordinator.id, 'thread_start', { title: 'Project work', brief: 'x', cwd: outside })
+  result = (await viaCard(r.host, () => r.host.call(r.coordinator.id, 'thread_start', { title: 'Project work', brief: 'x', cwd: outside }), 'Allow once')).result
   assert.equal(result['error'], undefined, String(result['error']))
   assert.equal(result['cwd'], outside)
   r.host.dispose()

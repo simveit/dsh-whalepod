@@ -13,7 +13,7 @@ import { pathText } from '../src/host/fence.ts'
 import { textMatch } from '../src/host/home-guard.ts'
 import { checkCoordinatorName, COORDINATOR_NAMES, coordinatorFolderName, coordinatorTitle, executorGroupTitle, freeName } from '../src/host/ids.ts'
 import { TOOL } from '../src/host/names.ts'
-import { FakeAgent, FakeHost, rig, tick, withCoordinator, type Rig } from './harness.ts'
+import { answerInline, FakeAgent, FakeHost, nextQuestion, offline, rig, tick, withCoordinator, type Rig } from './harness.ts'
 
 type WithCoord = Awaited<ReturnType<typeof withCoordinator>>
 
@@ -191,19 +191,16 @@ function fakeEnv(dirs: string[], extra: Partial<GuardEnv> = {}): GuardEnv {
 
 test('S5: a new folder below the coordinator\'s folder is allowed only when its nearest existing parent is that folder or a plugin-made one', () => {
   const env = fakeEnv(['/', '/home', '/home/u', '/home/u/dev', '/home/u/dev/repo', '/home/u/dev/made'], { pluginFolders: ['/home/u/dev/made'] })
-  assert.deepEqual(checkThreadFolder('/home/u/dev/fresh', [], env), { ok: true, path: '/home/u/dev/fresh', reason: 'threads-root' })
-  assert.deepEqual(checkThreadFolder('/home/u/dev/made/sub', [], env), { ok: true, path: '/home/u/dev/made/sub', reason: 'threads-root' })
-  // A new child of the user's existing repository: refused unless typed, then confirmed.
-  const refused = checkThreadFolder('/home/u/dev/repo/scratch', [], env)
-  assert.equal(refused.ok, false)
-  assert.equal((refused as { confirm?: true }).confirm, undefined)
-  assert.deepEqual(checkThreadFolder('/home/u/dev/repo/scratch', ['use ~/dev/repo/scratch'], env), { ok: false, confirm: true, path: '/home/u/dev/repo/scratch', why: 'existing' })
+  assert.deepEqual(checkThreadFolder('/home/u/dev/fresh', env), { ok: true, path: '/home/u/dev/fresh', reason: 'threads-root' })
+  assert.deepEqual(checkThreadFolder('/home/u/dev/made/sub', env), { ok: true, path: '/home/u/dev/made/sub', reason: 'threads-root' })
+  // A new child of the user's existing repository: never accepted on its own, always the user's confirmation.
+  assert.deepEqual(checkThreadFolder('/home/u/dev/repo/scratch', env), { ok: false, confirm: true, path: '/home/u/dev/repo/scratch', why: 'existing' })
 })
 
 test('S5: a folder inside or around another live Executor Session\'s folder needs confirmation', () => {
   const env = fakeEnv(['/', '/home', '/home/u', '/home/u/dev', '/home/u/dev/x', '/home/u/dev/group', '/home/u/dev/group/y'], { taken: ['/home/u/dev/x', '/home/u/dev/group/y'] })
-  assert.deepEqual(checkThreadFolder('/home/u/dev/x/inner', [], env), { ok: false, confirm: true, path: '/home/u/dev/x/inner', why: 'thread-folder' })
-  assert.deepEqual(checkThreadFolder('/home/u/dev/group', [], env), { ok: false, confirm: true, path: '/home/u/dev/group', why: 'thread-folder' })
+  assert.deepEqual(checkThreadFolder('/home/u/dev/x/inner', env), { ok: false, confirm: true, path: '/home/u/dev/x/inner', why: 'thread-folder' })
+  assert.deepEqual(checkThreadFolder('/home/u/dev/group', env), { ok: false, confirm: true, path: '/home/u/dev/group', why: 'thread-folder' })
 })
 
 // --- S6 and the forged row of the e2e run -------------------------------------------------------------------------
@@ -310,7 +307,7 @@ test('S6: loaded allowed folders ask again until the user confirms them in this 
   assert.equal(coord.name, 'Newton')
   assert.equal(coord.executorPrompt, undefined)
   again.host.userTurn(r.coordinator, `Work in ${outside}`)
-  const asked = await again.host.call(r.coordinator.id, TOOL.start, { title: 'Out', assignment: 'b', cwd: outside })
+  const asked = await offline(again.host, () => again.host.call(r.coordinator.id, TOOL.start, { title: 'Out', assignment: 'b', cwd: outside }))
   assert.equal((asked['action'] as { kind?: string } | undefined)?.kind, 'confirm-folder')
   again.host.dispose()
 })
@@ -364,8 +361,8 @@ test('S8: archive never removes a Workspace the plugin did not create', async ()
 
 test('S9/S10: folders may not nest in other homes; control characters and line breaks are refused; paths are shown without them', () => {
   const env = fakeEnv(['/', '/home', '/home/u', '/home/u/dev', '/home/u/b-home'], { otherHomes: ['/home/u/b-home'] })
-  assert.match((checkThreadFolder('/home/u/b-home/sub', ['/home/u/b-home/sub'], env) as { error: string }).error, /inside another Orchestrator's home/)
-  assert.match((checkThreadFolder('/home/u/dev/a\nb', [], env) as { error: string }).error, /control character or a line break/)
+  assert.match((checkThreadFolder('/home/u/b-home/sub', env) as { error: string }).error, /inside another Orchestrator's home/)
+  assert.match((checkThreadFolder('/home/u/dev/a\nb', env) as { error: string }).error, /control character or a line break/)
   assert.match(coordinatorFolderProblem('/home/u/x\n[dsh-coordinator notice]', { home: '/home/u', fs: env.fs }) ?? '', /control character/)
   assert.equal(coordinatorFolderProblem('/home/u/b-home/in', { home: '/home/u', fs: env.fs, otherHomes: ['/home/u/b-home'] }), 'it is inside another Orchestrator\'s home')
   assert.equal(pathText('/a\n\n[notice] b\u202e'), '/a??[notice] b?')
@@ -373,8 +370,8 @@ test('S9/S10: folders may not nest in other homes; control characters and line b
 
 test('L2: a thread folder that contains a coordinator\'s folder is refused, so no coordinator locks itself or another out', () => {
   const env = fakeEnv(['/', '/home', '/home/u', '/home/u/dev', '/home/u/dev/a-work', '/home/u/dev/b'], { ownFolder: '/home/u/dev/a-work', coordinatorFolders: ['/home/u/dev/a-work', '/home/u/dev/b/folder'] })
-  assert.match((checkThreadFolder('/home/u/dev', ['work in ~/dev'], env) as { error: string }).error, /contains an Orchestrator's folder/)
-  assert.match((checkThreadFolder('/home/u/dev/b', ['work in ~/dev/b'], env) as { error: string }).error, /contains an Orchestrator's folder/)
+  assert.match((checkThreadFolder('/home/u/dev', env) as { error: string }).error, /contains an Orchestrator's folder/)
+  assert.match((checkThreadFolder('/home/u/dev/b', env) as { error: string }).error, /contains an Orchestrator's folder/)
 })
 
 test('S11: {{ in a title never removes the role prompt, and a broken template falls back to a fixed one', async () => {
@@ -770,8 +767,7 @@ test('sidebar: three Executor Sessions get their groups in order after their coo
   mkdirSync(project, { recursive: true })
   const userWs = await (r.host.ctx['workspaceRegistry'] as { create: (p: string, t?: string) => Promise<{ id: string; title: string; sessionIds: string[] }> }).create(project, 'My project')
   r.host.userTurn(r.coordinator, `Work in ${project}`)
-  const asked = await r.host.call(r.coordinator.id, TOOL.start, { title: 'In project', assignment: 'b', cwd: project })
-  const started = await r.service.confirmFolder(asked['id'], 'once') as { id: string; sessionId: string }
+  const started = await answerInline(r.host, r.host.questions.length, r.host.call(r.coordinator.id, TOOL.start, { title: 'In project', assignment: 'b', cwd: project }), 'Allow once') as unknown as { id: string; sessionId: string }
   assert.deepEqual(userWs.sessionIds, [started.sessionId])
   assert.equal(userWs.title, 'My project')
   assert.equal(r.host.workspaces.at(-1)!.id, userWs.id, 'not moved')
@@ -894,7 +890,7 @@ test('A: the folder card waits for the coordinator\'s turn to end and is not rai
   r.host.userTurn(r.coordinator, `Work in ${join(r.home, 'dev', 'p')}`)
   mkdirSync(join(r.home, 'dev', 'p'), { recursive: true })
   r.coordinator.append('tool/call', { name: 'ask_user_question', callId: 'q-model', arguments: '{}' })
-  const asked = await r.host.call(r.coordinator.id, TOOL.start, { title: 'P', assignment: 'b', cwd: join(r.home, 'dev', 'p') })
+  const asked = await offline(r.host, () => r.host.call(r.coordinator.id, TOOL.start, { title: 'P', assignment: 'b', cwd: join(r.home, 'dev', 'p') }))
   assert.match(JSON.stringify(asked['notes']), /Do not ask the user about this folder with ask_user_question/)
   await tick(10)
   assert.equal(r.host.questions.length, 0, 'no plugin card next to the model\'s own question')
@@ -907,7 +903,7 @@ test('A: a question the model asks while the card is open withdraws the card; on
   const p = join(r.home, 'dev', 'p')
   mkdirSync(p, { recursive: true })
   r.host.userTurn(r.coordinator, `Work in ${p}`)
-  await r.host.call(r.coordinator.id, TOOL.start, { title: 'P', assignment: 'b', cwd: p })
+  await offline(r.host, () => r.host.call(r.coordinator.id, TOOL.start, { title: 'P', assignment: 'b', cwd: p }))
   await tick(10)
   assert.equal(r.host.questions.length, 0, 'not while the coordinator\'s turn runs')
   r.coordinator.endTurn()
@@ -923,7 +919,7 @@ test('A: a question the model asks while the card is open withdraws the card; on
   // Another card, answered under another question's id: ignored, the folder still waits.
   r.host.userTurn(r.coordinator, `Also ${p}/two`)
   mkdirSync(join(p, 'two'), { recursive: true })
-  await r.host.call(r.coordinator.id, TOOL.start, { title: 'Two', assignment: 'b', cwd: join(p, 'two') })
+  await offline(r.host, () => r.host.call(r.coordinator.id, TOOL.start, { title: 'Two', assignment: 'b', cwd: join(p, 'two') }))
   r.coordinator.endTurn()
   await tick(10)
   r.host.questions.at(-1)!.answer('Allow once', 'q1')
@@ -1105,10 +1101,18 @@ test('D4: an answer object with more than one entry does not decide the folder',
   const p = join(r.home, 'dev', 'p')
   mkdirSync(p, { recursive: true })
   r.host.userTurn(r.coordinator, `Work in ${p}`)
-  await r.host.call(r.coordinator.id, TOOL.start, { title: 'P', assignment: 'b', cwd: p })
+  // The inline card on the call: such an answer starts nothing; the Executor Session waits on its row instead.
+  const call = r.host.call(r.coordinator.id, TOOL.start, { title: 'P', assignment: 'b', cwd: p })
+  const inline = await nextQuestion(r.host, 0)
+  inline.raw({ answers: [{ id: inline.request.questions[0]!.id!, selected: ['Allow once'] }, { id: 'model-question', selected: ['Keep it'] }] })
+  const waiting = await call
+  assert.equal(waiting['sessionId'], '')
+  assert.equal((waiting['action'] as { kind?: string } | undefined)?.kind, 'confirm-folder')
+  // The card after the turn: the same answer does not decide the folder either.
   r.coordinator.endTurn()
   await tick(10)
-  const card = r.host.questions[0]!
+  const card = r.host.questions.at(-1)!
+  assert.notEqual(card, inline)
   const id = card.request.questions[0]!.id!
   card.raw({ answers: [{ id, selected: ['Allow once'] }, { id: 'model-question', selected: ['Keep it'] }] })
   await tick(10)

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { checkThreadFolder, FOLDER_PATH_MAX, pathMentions, realResolve, refusal, type GuardEnv } from '../src/host/cwd-guard.ts'
+import { checkThreadFolder, FOLDER_PATH_MAX, realResolve, refusal, type GuardEnv } from '../src/host/cwd-guard.ts'
 import { isUserTyped, turnOpenedByUser, turnSawThreadData, userTypedTexts } from '../src/host/authority.ts'
 import { briefWorkingDirectory } from '../src/host/ids.ts'
 
@@ -29,101 +29,87 @@ const env = fakeEnv(['/home', '/home/u', '/home/u/.ssh', '/home/u/.dsh', '/home/
   '/home/u/dev/decoy', '/home/u/dev/decoy/precious', '/home/u/dev/decoy/new-scratch', '/home/u/dsh-threads/other', '/home/u/dsh-threads/_coordinator'],
 { '/tmp': '/private/tmp', '/home/u/link-to-ssh': '/home/u/.ssh', '/home/u/dev/sneaky': '/etc', '/home/u/dev/decoy/new-scratch': '/home/u/dev/decoy/precious' })
 
-const ok = (path: string, users: string[] = [], extra: Partial<GuardEnv> = {}) => checkThreadFolder(path, users, { ...env, ...extra })
+const ok = (path: string, extra: Partial<GuardEnv> = {}) => checkThreadFolder(path, { ...env, ...extra })
 const accepted = (result: ReturnType<typeof ok>) => result.ok
 const confirm = (result: ReturnType<typeof ok>) => (result.ok === false && result.confirm === true ? { path: result.path, why: result.why } : undefined)
 
-test('always refused, even when the user names them', () => {
+test('always refused, never even offered to the user', () => {
   for (const path of ['/', '~', '/home/u', '/home', '~/.ssh', '/home/u/.ssh/keys', '~/.dsh', '~/.config/x', '/etc', '/usr/local/bin',
     '/tmp/x', '/private/tmp', '~/Library/Keychains', '/home/u/dev/repo/.git', '/home/u/link-to-ssh', '/home/u/dev/sneaky/x', '~/dev/../.ssh']) {
-    const result = ok(path, [`please work in ${path}`])
+    const result = ok(path)
     assert.equal(result.ok, false, path)
+    assert.equal(confirm(result), undefined, path)
+    // The allowed list never lifts a hard refusal either.
+    assert.equal(confirm(ok(path, { allowed: ['/'] })), undefined, path)
   }
 })
 
 test('below the coordinator\'s folder: a new or plugin-made folder is allowed, the folder itself is not', () => {
   const pluginFolders = ['/home/u/dsh-threads/a']
-  assert.deepEqual(ok('/home/u/dsh-threads/a', [], { pluginFolders }), { ok: true, path: '/home/u/dsh-threads/a', reason: 'threads-root' })
+  assert.deepEqual(ok('/home/u/dsh-threads/a', { pluginFolders }), { ok: true, path: '/home/u/dsh-threads/a', reason: 'threads-root' })
   assert.deepEqual(ok('~/dsh-threads/new/deeper'), { ok: true, path: '/home/u/dsh-threads/new/deeper', reason: 'threads-root' })
   assert.equal(ok('/home/u/dsh-threads').ok, false)
   assert.equal(ok('/home/u/dsh-threads/../dev/foo').ok, false)
 })
 
 test('an existing folder below the coordinator\'s folder that the plugin did not make is treated like an outside folder', () => {
-  // Pointed at ~/dev, "below the folder" would otherwise include the user's existing repositories.
-  const result = ok('/home/u/dsh-threads/a')
-  assert.equal(result.ok, false)
-  assert.equal(confirm(result), undefined)
-  assert.match((result as { error: string }).error, /lies inside, a folder the plugin did not make/)
-  assert.deepEqual(confirm(ok('/home/u/dsh-threads/a', ['work in ~/dsh-threads/a'])), { path: '/home/u/dsh-threads/a', why: 'existing' })
-  assert.deepEqual(ok('/home/u/dsh-threads/a', ['work in ~/dsh-threads/a'], { allowed: ['/home/u/dsh-threads/a'] }), { ok: true, path: '/home/u/dsh-threads/a', reason: 'allowed' })
-  // The same with the folder pointed at ~/dev: an existing repository needs the user's words and confirmation.
-  assert.equal(ok('/home/u/dev/repo', [], { ownFolder: '/home/u/dev' }).ok, false)
-  assert.deepEqual(confirm(ok('/home/u/dev/repo', ['use ~/dev/repo'], { ownFolder: '/home/u/dev' })), { path: '/home/u/dev/repo', why: 'existing' })
-  assert.deepEqual(ok('/home/u/dev/brand-new', [], { ownFolder: '/home/u/dev' }), { ok: true, path: '/home/u/dev/brand-new', reason: 'threads-root' })
+  // Pointed at ~/dev, "below the folder" would otherwise include the user's existing repositories: it always needs
+  // the user's confirmation, whoever named it.
+  assert.deepEqual(confirm(ok('/home/u/dsh-threads/a')), { path: '/home/u/dsh-threads/a', why: 'existing' })
+  assert.deepEqual(ok('/home/u/dsh-threads/a', { allowed: ['/home/u/dsh-threads/a'] }), { ok: true, path: '/home/u/dsh-threads/a', reason: 'allowed' })
+  // The same with the folder pointed at ~/dev: an existing repository needs confirmation.
+  assert.deepEqual(confirm(ok('/home/u/dev/repo', { ownFolder: '/home/u/dev' })), { path: '/home/u/dev/repo', why: 'existing' })
+  assert.deepEqual(ok('/home/u/dev/brand-new', { ownFolder: '/home/u/dev' }), { ok: true, path: '/home/u/dev/brand-new', reason: 'threads-root' })
 })
 
-test('a folder that contains the dsh home, or lies in it, is refused even when the user names it', () => {
+test('a folder that contains the dsh home, or lies in it, is refused even when it is on the allowed list', () => {
   for (const path of ['/home/u/dev/proj', '/home/u/dev', '/home/u/dev/proj/.dsh-home/x']) {
-    const result = ok(path, [`work in ${path}`], { allowed: [path] })
+    const result = ok(path, { allowed: [path] })
     assert.equal(result.ok, false, path)
     assert.equal(confirm(result), undefined, path)
   }
-  assert.match((ok('/home/u/dev/proj', ['work in ~/dev/proj']) as { error: string }).error, /contains the dsh home/)
+  assert.match((ok('/home/u/dev/proj') as { error: string }).error, /contains the dsh home/)
 })
 
-test('outside the root: refused unless the user typed exactly that folder, then it needs the user\'s confirmation', () => {
-  assert.equal(ok('/home/u/dev/foo').ok, false)
-  assert.equal(confirm(ok('/home/u/dev/foo')), undefined)
-  assert.match((ok('/home/u/dev/foo') as { error: string }).error, /Ask the user to name the folder/)
-  assert.deepEqual(confirm(ok('/home/u/dev/foo', ['Work in ~/dev/foo please.'])), { path: '/home/u/dev/foo', why: 'outside' })
-  assert.deepEqual(confirm(ok('~/dev/foo', ['Work in /home/u/dev/foo/'])), { path: '/home/u/dev/foo', why: 'outside' })
-  // Boundaries: a longer sibling name and a parent do not count as naming it.
-  assert.equal(confirm(ok('/home/u/dev/foo', ['Use ~/dev/foo-bar for it'])), undefined)
-  assert.equal(confirm(ok('/home/u/dev/repo/pkg', ['The repo is ~/dev/repo'])), undefined)
-  assert.equal(confirm(ok('/home/u/dev/repo', ['The package is ~/dev/repo/pkg'])), undefined)
-  // Quoted paths with spaces, and folders that do not exist yet.
-  assert.deepEqual(confirm(ok('/home/u/dev/My Project', ['Put it in "~/dev/My Project".'])), { path: '/home/u/dev/My Project', why: 'outside' })
-  assert.deepEqual(confirm(ok('/home/u/dev/new-one', ['make `~/dev/new-one` for this'])), { path: '/home/u/dev/new-one', why: 'outside' })
-  // A mere mention ("never touch") still only reaches the confirmation; the model cannot pass it.
-  assert.deepEqual(confirm(ok('/home/u/dev/repo', ['never touch ~/dev/repo'])), { path: '/home/u/dev/repo', why: 'outside' })
+test('outside the root: always the user\'s confirmation, whether or not anyone typed the path', () => {
+  // Nothing the model can produce reaches past the confirmation: it is the only way in besides the allowed list.
+  assert.deepEqual(confirm(ok('/home/u/dev/foo')), { path: '/home/u/dev/foo', why: 'outside' })
+  assert.deepEqual(confirm(ok('~/dev/foo')), { path: '/home/u/dev/foo', why: 'outside' })
+  assert.deepEqual(confirm(ok('/home/u/dev/foo/')), { path: '/home/u/dev/foo', why: 'outside' })
+  assert.deepEqual(confirm(ok('/home/u/dev/repo/pkg')), { path: '/home/u/dev/repo/pkg', why: 'outside' })
+  // Paths with spaces, and folders that do not exist yet.
+  assert.deepEqual(confirm(ok('/home/u/dev/My Project')), { path: '/home/u/dev/My Project', why: 'outside' })
+  assert.deepEqual(confirm(ok('/home/u/dev/new-one')), { path: '/home/u/dev/new-one', why: 'outside' })
 })
 
-test('the allowed-folders list lets a named folder (and its subfolders) run without asking', () => {
+test('the allowed-folders list lets a folder (and its subfolders) run without asking', () => {
   const allowed = ['/home/u/dev/repo']
-  assert.deepEqual(ok('/home/u/dev/repo', ['work in ~/dev/repo'], { allowed }), { ok: true, path: '/home/u/dev/repo', reason: 'allowed' })
-  assert.deepEqual(ok('/home/u/dev/repo/pkg', ['work in ~/dev/repo/pkg'], { allowed }), { ok: true, path: '/home/u/dev/repo/pkg', reason: 'allowed' })
-  // Still needs the user's words, and the list never lifts the hard refusals.
-  assert.equal(accepted(ok('/home/u/dev/repo', [], { allowed })), false)
-  assert.equal(accepted(ok('/home/u/.ssh', ['use ~/.ssh'], { allowed: ['/home/u'] })), false)
-  assert.equal(confirm(ok('/home/u/dev/foo-bar', ['use ~/dev/foo-bar'], { allowed: ['/home/u/dev/foo'] }))?.why, 'outside')
+  assert.deepEqual(ok('/home/u/dev/repo', { allowed }), { ok: true, path: '/home/u/dev/repo', reason: 'allowed' })
+  assert.deepEqual(ok('/home/u/dev/repo/pkg', { allowed }), { ok: true, path: '/home/u/dev/repo/pkg', reason: 'allowed' })
+  // The list never lifts the hard refusals, and an entry does not cover a longer sibling name.
+  assert.equal(accepted(ok('/home/u/.ssh', { allowed: ['/home/u'] })), false)
+  assert.equal(confirm(ok('/home/u/dev/foo-bar', { allowed: ['/home/u/dev/foo'] }))?.why, 'outside')
 })
 
-test('M1: a symlink the user named is confirmed by its real path; the typed path alone is not approval', () => {
-  assert.deepEqual(confirm(ok('/home/u/dev/decoy/new-scratch', ['work in ~/dev/decoy/new-scratch'])), { path: '/home/u/dev/decoy/precious', why: 'symlink' })
-  // Allowing the typed path does not allow where it points.
-  assert.equal(confirm(ok('/home/u/dev/decoy/new-scratch', ['work in ~/dev/decoy/new-scratch'], { allowed: ['/home/u/dev/decoy/new-scratch'] }))?.path, '/home/u/dev/decoy/precious')
-  assert.equal(accepted(ok('/home/u/dev/decoy/new-scratch', ['work in ~/dev/decoy/new-scratch'], { allowed: ['/home/u/dev/decoy/precious'] })), true)
-})
-
-test('L1: URLs and pasted text never count as naming a folder', () => {
-  assert.equal(confirm(ok('/h/a', ['see https://h/a for details'])), undefined)
-  assert.equal(confirm(ok('/home/u/dev/foo', ['clone git+ssh://example/home/u/dev/foo'])), undefined)
-  assert.deepEqual(pathMentions('see https://h/a and file:///etc/x but /real/one'), ['/real/one'])
+test('M1: a symlink is confirmed by its real path; allowing the link path is not approval', () => {
+  assert.deepEqual(confirm(ok('/home/u/dev/decoy/new-scratch')), { path: '/home/u/dev/decoy/precious', why: 'symlink' })
+  // Allowing the requested path does not allow where it points.
+  assert.equal(confirm(ok('/home/u/dev/decoy/new-scratch', { allowed: ['/home/u/dev/decoy/new-scratch'] }))?.path, '/home/u/dev/decoy/precious')
+  assert.equal(accepted(ok('/home/u/dev/decoy/new-scratch', { allowed: ['/home/u/dev/decoy/precious'] })), true)
 })
 
 test('L7: another live thread\'s folder needs the user\'s confirmation; a coordinator home is never a thread folder', () => {
   const taken = ['/home/u/dsh-threads/other']
-  assert.deepEqual(confirm(ok('/home/u/dsh-threads/other', [], { taken })), { path: '/home/u/dsh-threads/other', why: 'thread-folder' })
+  assert.deepEqual(confirm(ok('/home/u/dsh-threads/other', { taken })), { path: '/home/u/dsh-threads/other', why: 'thread-folder' })
   const coordinator = ['/home/u/dsh-threads/_coordinator', '/home/u/dev/foo/sub']
   for (const path of ['/home/u/dsh-threads/_coordinator', '/home/u/dev/foo']) {
-    const result = ok(path, [`work in ${path}`], { coordinator, allowed: [path] })
+    const result = ok(path, { coordinator, allowed: [path] })
     assert.equal(result.ok, false, path)
     assert.equal(confirm(result), undefined, path)
   }
 })
 
-test('a path that appears only in thread output never authorises', () => {
+test('a path that appears only in thread output never authorises: it still needs the user\'s confirmation', () => {
   // The caller passes only user-typed messages; thread reports, notices and tool results are other message kinds.
   const log = [
     { type: 'user/message', data: { source: { kind: 'user', rpcId: 'r1' }, content: [{ type: 'text', text: 'Summarise the README.' }] } },
@@ -136,8 +122,9 @@ test('a path that appears only in thread output never authorises', () => {
   ]
   const texts = userTypedTexts(log)
   assert.deepEqual(texts, ['Summarise the README.'])
-  assert.equal(ok('/home/u/dev/foo', texts).ok, false)
-  assert.equal(confirm(ok('/home/u/dev/foo', texts)), undefined)
+  // Typed or not, the folder goes to the user's confirmation and is never accepted on its own.
+  assert.equal(ok('/home/u/dev/foo').ok, false)
+  assert.deepEqual(confirm(ok('/home/u/dev/foo')), { path: '/home/u/dev/foo', why: 'outside' })
 })
 
 test('the brief heuristic yields only guarded paths', () => {
@@ -182,22 +169,22 @@ test('F5: the folder an Assignment names is bounded before it is looked up, and 
   const long = `/home/u/dsh-threads${'/n'.repeat(19_000)}`
   const fromBrief = briefWorkingDirectory(`Goal: x\nWorking directory: ${long}\n`)!
   assert.equal(fromBrief.length, long.length)
-  const refused = timed('a path of 38 000 characters', 50, () => ok(fromBrief, [], counting))
+  const refused = timed('a path of 38 000 characters', 50, () => ok(fromBrief, counting))
   assert.equal(refused.ok, false)
   assert.match((refused as { error: string }).error, /^cwd is 38019 characters long, and a folder path may have at most 1000\./)
   assert.equal(lookups, 0)
   assert.equal(FOLDER_PATH_MAX, 1000)
-  assert.equal(ok(`/home/u/dsh-threads/${'n'.repeat(981)}`, [], counting).ok, false)
+  assert.equal(ok(`/home/u/dsh-threads/${'n'.repeat(981)}`, counting).ok, false)
   // At the bound a new folder deep below the coordinator's folder is still accepted, and the folder that exists
   // above it is found with a few dozen lookups, not one per segment.
   lookups = 0
   const deep = `/home/u/dsh-threads${'/n'.repeat(490)}`
   assert.equal(deep.length, 999)
-  assert.equal(accepted(ok(deep, [], counting)), true)
+  assert.equal(accepted(ok(deep, counting)), true)
   assert.ok(lookups < 120, `${lookups} lookups`)
   // Below a folder the plugin did not make, the same depth still needs the user: the nearest existing folder decides.
-  assert.equal(accepted(ok(`/home/u/dsh-threads/a${'/n'.repeat(480)}`, [], counting)), false)
-  assert.equal(accepted(ok(`/home/u/dsh-threads/a${'/n'.repeat(480)}`, [], { ...counting, pluginFolders: ['/home/u/dsh-threads/a'] })), true)
+  assert.equal(accepted(ok(`/home/u/dsh-threads/a${'/n'.repeat(480)}`, counting)), false)
+  assert.equal(accepted(ok(`/home/u/dsh-threads/a${'/n'.repeat(480)}`, { ...counting, pluginFolders: ['/home/u/dsh-threads/a'] })), true)
 })
 
 test('relative and NUL paths are refused with guidance', () => {
@@ -205,8 +192,7 @@ test('relative and NUL paths are refused with guidance', () => {
   assert.equal(ok('/home/u/dsh-threads/a\0b').ok, false)
 })
 
-test('mentions and real paths', () => {
-  assert.deepEqual(pathMentions('use ~/a, then /b/c. and "~/d e"; also (`/f`)'), ['~/d e', '/f', '~/a', '/b/c'])
+test('real paths', () => {
   assert.equal(realResolve('/tmp/x/y', env.fs), '/private/tmp/x/y')
   assert.equal(refusal('/home/u/dev/foo', env), undefined)
 })
