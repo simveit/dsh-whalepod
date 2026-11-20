@@ -16,10 +16,8 @@
  * What was typed, proposed and chosen lives in the page's draft (`NewCoordinatorDraft` in store.ts) and is reported
  * with `onDraft`: the form is taken down while the folder picker is open and built again for the picked folder, and it
  * shows the same name and models then.
- * The global Matriarc switch is shown here too (`matriarc`, rendered by the page); it changes the setting at once, for
- * every Orchestrator, and is not part of the Create request.
  */
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { CoordinatorInfo, CreateCoordinatorRequest, NewCoordinatorSetup } from '../types.ts'
 import type { Translate } from './locales.ts'
 import { formModel } from './model-view.ts'
@@ -31,7 +29,7 @@ import { Button } from './ui.tsx'
 /** What the form may change in the page's draft. */
 export type NewCoordinatorPatch = Partial<Pick<NewCoordinatorDraft, 'name' | 'setup' | 'coordinatorModel' | 'executorModel'>>
 
-export function NewCoordinatorForm({ draft, coordinators, basePath, busy, error, t, dsh, loadSetup, watch, matriarc, onDraft, onCreate, onCancel }: {
+export function NewCoordinatorForm({ draft, coordinators, basePath, busy, error, t, dsh, loadSetup, watch, onDraft, onCreate, onCancel }: {
   draft: NewCoordinatorDraft; coordinators: readonly CoordinatorInfo[]; t: Translate
   /** Where the typed path starts (the base for new coordinators). */
   basePath: string
@@ -46,8 +44,6 @@ export function NewCoordinatorForm({ draft, coordinators, basePath, busy, error,
   watch: (listener: () => void) => () => void
   /** The name field, the proposal or a picker changed: the page keeps it in the draft. */
   onDraft: (patch: NewCoordinatorPatch) => void
-  /** The global Matriarc switch (nothing while Matriarc is not installed). */
-  matriarc?: ReactNode
   onCreate: (request: CreateCoordinatorRequest) => void
   onCancel: () => void
 }) {
@@ -149,7 +145,6 @@ export function NewCoordinatorForm({ draft, coordinators, basePath, busy, error,
     {setup?.partial === true && !empty && <p className="dco-model-note" data-testid="dco-new-model-partial">{t('models.partial')}</p>}
     {empty && !setup.partial && <p className="dco-model-note" data-testid="dco-new-model-none">{t('models.none')}</p>}
     <p className="dco-path-hint">{t('newCoordinator.models.hint')}</p>
-    {matriarc}
     {error !== undefined && <p className="dco-field-error" role="alert" data-testid="dco-new-error">{error}</p>}
     <span className="dco-path-buttons dco-new-buttons">
       <Button variant="ghost" size="sm" disabled={busy} onClick={onCancel}>{t('folder.cancel')}</Button>

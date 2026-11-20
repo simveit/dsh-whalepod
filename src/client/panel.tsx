@@ -655,7 +655,6 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
         {draft !== undefined && !pick.pending && <NewCoordinatorForm key={draft.kind === 'picked' ? `picked:${draft.home}` : draft.kind} draft={draft} coordinators={coordinators}
           basePath={state?.base?.path ?? ''} busy={busy === 'new' || busy === 'choose'} error={createError} t={t} dsh={dshModel} loadSetup={newCoordinatorSetup} watch={watchModels}
           onDraft={(patch) => { setCreateError(undefined); setDraft(current => (current === undefined ? current : { ...current, ...patch })) }}
-          matriarc={<MatriarcControl state={state?.matriarc} t={t} disabled={busy === 'new' || busy === 'choose'} notice={navigatorRow} onSet={onSetMatriarc} />}
           onCreate={(options) => { void create(options) }} onCancel={() => { setCreateError(undefined); setDraft(undefined) }} />}
         {__DSH_COORDINATOR_DEV__ && fake && <p className="dco-dev-note" data-testid="dco-fake">Fake data source (?coordinatorSource=real to switch back)</p>}
         {problems.map(problem => <ProblemNotice key={problem.kind} problem={problem} t={t} />)}

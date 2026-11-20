@@ -2,6 +2,10 @@
 
 All notable changes to this plugin are listed here. Versions follow [Semantic Versioning](https://semver.org/). The DeepSeek Harness versions a release runs on are in `engines.dsh` in `package.json`.
 
+## 0.6.1 - 2026-11-20
+
+- The New Orchestrator setup step no longer shows a second "Matriarc in Executor Sessions" toggle. The toggle stays in one place, under "Executor Sessions run in" at the top of the Orchestrator page, which stays visible while the setup step is open.
+
 ## 0.6.0 - 2026-11-20
 
 - The role formerly called Coordinator is now Orchestrator (编排者) in the UI, the prompts, the host's messages to models and the docs; ids, config keys, the storage folder and log marks keep `coordinator`.

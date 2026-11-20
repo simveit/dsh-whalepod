@@ -1,7 +1,7 @@
 /**
- * The global Matriarc switch: one on/off toggle laid out like the "Executor Sessions run in" control, at the top of the
- * Orchestrator page and in the New Orchestrator form (the same setting in both places, for every Orchestrator). Shown
- * only while Matriarc is installed; the caller renders nothing otherwise.
+ * The global Matriarc switch: one on/off toggle laid out like the "Executor Sessions run in" control, under it at the
+ * top of the Orchestrator page (one setting for every Orchestrator; the New Orchestrator form opens under it and has no
+ * copy of its own). Shown only while Matriarc is installed; the caller renders nothing otherwise.
  */
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import type { MatriarcState } from '../types.ts'
