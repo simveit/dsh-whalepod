@@ -1,4 +1,4 @@
-import type { ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelChoices, NewCoordinatorSetup, ReportKind, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermissionState } from '../types.ts';
+import type { ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, MatriarcState, ModelChoices, NewCoordinatorSetup, ReportKind, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermissionState } from '../types.ts';
 import { type GuardFs } from './cwd-guard.ts';
 import type { HostContext, SessionId } from './dsh.ts';
 import { type CoordinatorConfig } from './ids.ts';
@@ -128,6 +128,12 @@ export declare class ThreadService implements ThreadOps {
     private loaded;
     /** The permission mode the user picked on the Coordinator page; undefined: the configured default. */
     private permissionChoice;
+    /** The Matriarc switch the user picked on the Orchestrator page; undefined = the config default (`matriarc`). */
+    private matriarcChoice;
+    /** Whether Matriarc was installed at the last tool change, so a change of it bumps the state for the page. */
+    private matriarcSeen;
+    /** Subagent providers announced since load (the fallback of `hasNavigator`). */
+    private readonly announcedProviders;
     private revision;
     /** Changes on every load, so a client can tell a restarted host from an unchanged one with the same revision. */
     private readonly epoch;
@@ -317,10 +323,17 @@ export declare class ThreadService implements ThreadOps {
     private llm;
     private presets;
     /**
-     * Put a coordinator chat on `workspace-write`. It has no write or shell tools (restrictCoordinator); the stricter
-     * sandbox is defence in depth, so a failure is ignored.
+     * Put a new coordinator chat on its preset: `auto` while new Executor Sessions run in auto review and dsh has it
+     * loaded (`threadPermission().effective`), else `workspace-write`. It has no write or shell tools either way
+     * (restrictCoordinator); the preset is defence in depth, so a failure is ignored. Set when the chat is made or becomes
+     * a candidate; a later change of the mode applies to chats made afterwards.
      */
     private sandboxChat;
+    /**
+     * Move live coordinator chats off `auto` when auto review is gone or the plugin unloads: on a live removal dsh's
+     * auto-review bundle would switch `auto` Sessions to full access (as for thread leads in applyPermissions).
+     */
+    private applyChatPermissions;
     /** The permission mode new threads start in: the user's choice, else the config; `ask` while auto review is missing. */
     threadPermission(): ThreadPermissionState;
     /**
@@ -328,6 +341,18 @@ export declare class ThreadService implements ThreadOps {
      * applies to threads started afterwards and their team members, never to running ones.
      */
     setThreadPermission(mode: unknown): ThreadPermissionState;
+    /** The global Matriarc switch: the user's choice, else the config; `installed` says whether it does anything. */
+    matriarcState(): MatriarcState;
+    /**
+     * The user switched Matriarc on or off on the Orchestrator page (owner only, no tool reaches it). On: Executor
+     * Sessions started from now on get `/matriarc on`, and Orchestrator chats lose Matriarc's tool and prompt section at
+     * once. Off: the plugin leaves Matriarc alone. Running Executor Sessions keep their switch either way.
+     */
+    setMatriarc(enabled: unknown): MatriarcState;
+    /** Matriarc is installed and switched on: Executor Sessions get it, Orchestrator chats never do. */
+    private matriarcActive;
+    /** `coordinatorExtraTools` without `matriarc` while the switch is active (the only way that tool could reach a chat). */
+    private coordinatorExtra;
     /** Every live thread of every coordinator, newest first (the owner's view: the page, the pane, Remote callers). */
     allThreads(): ThreadInfo[];
     /**
@@ -576,17 +601,19 @@ export declare class ThreadService implements ThreadOps {
     /** Whether the Matriarc plugin is loaded: a global tool named `matriarc` is registered. */
     private matriarcInstalled;
     /**
-     * Run `/matriarc on|off` in an Agent's Session through dsh's command runtime. Returns why it failed (an error result
-     * or a thrown error), else undefined; without the runtime or the command (Matriarc not loaded) it does nothing.
+     * Run `/matriarc on` in a new Executor Session's Lead through dsh's command runtime (logged as the user's command,
+     * which is what Matriarc's switch reads). Returns why it failed (an error result or a thrown error), else undefined;
+     * without the runtime or the command (Matriarc not loaded) it does nothing.
      */
-    private switchMatriarc;
-    /** A stored coordinator's chat with `coordinatorMatriarc` on: only it gets the `matriarc` tool. */
-    private matriarcChat;
+    private matriarcOn;
+    /** A navigator plugin came or went: the page shows or hides Matriarc's notice on the next poll. */
+    private watchProviders;
     /**
-     * Apply `coordinatorMatriarc` to a coordinator's chat: re-narrow its tools and run `/matriarc on|off` in it (`agent`,
-     * else the open chat, resolved as `setCoordinatorModel` does). A failure is logged; the setting stays saved.
+     * While the switch is active, an Orchestrator chat (stored, candidate or fenced) never shows Matriarc's prompt
+     * section: it is dropped from the assembly here, whatever Matriarc's own per-session switch says (the user may have
+     * turned it on in that chat). Its tool is already outside the chat's allow list.
      */
-    private applyChatMatriarc;
+    private registerMatriarcGuard;
     /**
      * Thread agents run on the user's Standard tools, except the plugin manager and market tools, which would let a
      * thread install code into the user's dsh.
@@ -661,8 +688,6 @@ export declare class ThreadService implements ThreadOps {
      * model-defaults.ts are only what the form's pickers start on (`newCoordinatorSetup`), so a model is stored only
      * when the request names it. The chat starts on the coordinator model, as a replacement chat starts on a stored one.
      *
-     * `coordinatorMatriarc` (default false) and `executorMatriarc` (default true) must be booleans when given.
-     *
      * Every way a coordinator comes about without the form (`ensureCoordinator` with no coordinator, a New Session in a
      * coordinator's group, the upgrade of an earlier release, Reopen) keeps the automatic name and sets no model.
      */
@@ -672,8 +697,6 @@ export declare class ThreadService implements ThreadOps {
         suggestedName?: unknown;
         coordinatorModel?: unknown;
         executorModel?: unknown;
-        coordinatorMatriarc?: unknown;
-        executorMatriarc?: unknown;
     }): Promise<{
         coordinatorId: string;
         sessionId: string;
@@ -853,16 +876,6 @@ export declare class ThreadService implements ThreadOps {
      * refused with one line for the coordinator and for its Leads, and the stored text and its revision stay as they are.
      */
     setCoordinatorMemoryEnabled(request: {
-        coordinatorId?: unknown;
-        enabled?: unknown;
-    }): CoordinatorInfo;
-    /** The owner switches Matriarc for a coordinator's chat (a Remote method; owner only); applies at once. */
-    setCoordinatorMatriarcEnabled(request: {
-        coordinatorId?: unknown;
-        enabled?: unknown;
-    }): Promise<CoordinatorInfo>;
-    /** The owner switches Matriarc for new Executor Sessions (a Remote method; owner only); running ones keep theirs. */
-    setExecutorMatriarcEnabled(request: {
         coordinatorId?: unknown;
         enabled?: unknown;
     }): CoordinatorInfo;

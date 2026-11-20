@@ -13,8 +13,8 @@ import type {
 } from '../types.ts'
 import { CoordinatorArt } from './art.tsx'
 import { ExecutorPrompt } from './executor-prompt.tsx'
-import { CoordinatorMatriarc, MatriarcNavigatorNotice } from './matriarc.tsx'
-import type { NavigatorNotice } from './navigator.ts'
+import { MatriarcControl, MatriarcNavigatorNotice } from './matriarc.tsx'
+import { wantsNavigatorNotice, type NavigatorNotice } from './navigator.ts'
 import { CoordinatorMemory } from './memory.tsx'
 import { ModelSettings } from './models.tsx'
 import { FolderLine, PickWait, TypePathButton, usePendingPick, type PickResult } from './folder.tsx'
@@ -57,10 +57,6 @@ export interface PanelActions {
   setCoordinatorMemory(coordinatorId: string, text: string, revision: number): Promise<SetCoordinatorMemoryResult>
   /** Switch a coordinator's memory on or off (off keeps the text). */
   setCoordinatorMemoryEnabled(coordinatorId: string, enabled: boolean): Promise<void>
-  /** Switch Matriarc on or off for a coordinator's chat; applies at once. */
-  setCoordinatorMatriarcEnabled(coordinatorId: string, enabled: boolean): Promise<void>
-  /** Switch Matriarc on or off for the Executor Sessions a coordinator starts afterwards. */
-  setExecutorMatriarcEnabled(coordinatorId: string, enabled: boolean): Promise<void>
   /** The models dsh offers and what a coordinator's two model settings resolve to. */
   listModelChoices(coordinatorId: string): Promise<ModelChoices>
   /** Calls back when dsh's models may have changed; returns the release. */
@@ -82,6 +78,8 @@ export interface PanelActions {
   archiveThread(id: string): Promise<void>
   /** Set how new Executor Sessions run. Throws with a user-facing message on failure. */
   setThreadPermission(mode: ThreadPermission): Promise<void>
+  /** The global Matriarc switch (every Orchestrator; Executor Sessions started from now on). */
+  setMatriarc(enabled: boolean): Promise<void>
   /** Answer an Executor Session's folder confirmation. */
   confirmFolder(id: string, decision: FolderDecision): Promise<void>
   /** Remove a folder from the allowed folders. */
@@ -91,8 +89,8 @@ export interface PanelActions {
   refresh(): void
   /** Poll fast while the page is shown; returns the release. */
   holdFast(): () => void
-  /** Matriarc's "no navigator" notice for a Session's command list; undefined when a navigator is listed or it can't be read. */
-  navigatorNotice(sessionId: string): Promise<NavigatorNotice | undefined>
+  /** The plugins Matriarc's "no navigator" notice offers (from the Plugins page); undefined when they can't be read. */
+  navigatorNotice(): Promise<NavigatorNotice | undefined>
   /** Open a bundle on the Plugins page, or the list without a name. */
   openPlugins(packageName?: string): void
 }
@@ -382,7 +380,7 @@ function DeleteConfirm({ coordinator, archivedCount, t, onCancel, onConfirm }: {
 }
 
 export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval, dshModel, listModelChoices, watchModels, setCoordinatorModel, setExecutorModel, openCoordinator, newCoordinatorSetup, newCoordinator, pickFolder, setCoordinatorFolder,
-  setExecutorPrompt, setCoordinatorMemory, setCoordinatorMemoryEnabled, setCoordinatorMatriarcEnabled, setExecutorMatriarcEnabled, renameCoordinator, archiveCoordinator, deleteCoordinator, select, openSession, archiveThread, setThreadPermission, confirmFolder, removeAllowedFolder,
+  setExecutorPrompt, setCoordinatorMemory, setCoordinatorMemoryEnabled, renameCoordinator, archiveCoordinator, deleteCoordinator, select, openSession, archiveThread, setThreadPermission, setMatriarc, confirmFolder, removeAllowedFolder,
   resumeThread, refresh, holdFast, navigatorNotice, openPlugins }: PanelProps) {
   const snapshot = useCoordinator(s => s)
   const now = useNow()
@@ -399,8 +397,9 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
   // A neutral one-line notice (not an error), e.g. why an archived coordinator's Workspace was kept.
   const [info, setInfo] = useState<string | undefined>(undefined)
   const pick = usePendingPick(pickFolder)
-  const navigatorRow = (sessionId: string | null | undefined) => <MatriarcNavigatorNotice sessionId={sessionId ?? undefined} t={t} load={navigatorNotice} open={openPlugins} />
+  const navigatorRow = <MatriarcNavigatorNotice shown={wantsNavigatorNotice(snapshot.state?.matriarc)} t={t} load={navigatorNotice} open={openPlugins} />
   useEffect(() => holdFast(), [holdFast])
+  const onSetMatriarc = async (enabled: boolean) => { await setMatriarc(enabled); refresh() }
 
   const state = snapshot.state
   const loading = isLoading(state)
@@ -581,8 +580,6 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
         <CoordinatorMemory key={`memory-${selected.id}`} coordinator={selected} t={t} {...(state?.epoch === undefined ? {} : { epoch: state.epoch })}
           onSave={async (id, text, revision) => { const result = await setCoordinatorMemory(id, text, revision); refresh(); return result }}
           onToggle={async (id, enabled) => { await setCoordinatorMemoryEnabled(id, enabled); refresh() }} />
-        <CoordinatorMatriarc key={`matriarc-${selected.id}`} coordinator={selected} t={t} installed={state?.matriarc?.installed === true} notice={navigatorRow(selected.sessionId)}
-          onSet={async (id, which, enabled) => { await (which === 'coordinator' ? setCoordinatorMatriarcEnabled : setExecutorMatriarcEnabled)(id, enabled); refresh() }} />
       </div>
       <div className="dco-threads-head">
         <h3 className="dco-section-title">{t('threads.label')}</h3>
@@ -651,13 +648,14 @@ export function CoordinatorPanel({ useCoordinator, t, dshPermission, dshApproval
           <div className="dco-head-perm">
             <PermissionControl state={state?.threadPermission} t={t} dsh={dshPermission}
               onSet={async (mode) => { await setThreadPermission(mode); refresh() }} />
+            <MatriarcControl state={state?.matriarc} t={t} notice={navigatorRow} onSet={onSetMatriarc} />
           </div>
         </div>
         {pick.pending && <PickWait slow={pick.slow} t={t} onType={typePath} onCancel={pick.cancel} />}
         {draft !== undefined && !pick.pending && <NewCoordinatorForm key={draft.kind === 'picked' ? `picked:${draft.home}` : draft.kind} draft={draft} coordinators={coordinators}
           basePath={state?.base?.path ?? ''} busy={busy === 'new' || busy === 'choose'} error={createError} t={t} dsh={dshModel} loadSetup={newCoordinatorSetup} watch={watchModels}
           onDraft={(patch) => { setCreateError(undefined); setDraft(current => (current === undefined ? current : { ...current, ...patch })) }}
-          matriarcNotice={navigatorRow((coordinators.find(c => c.id === state?.lastCoordinatorId && c.sessionId !== null) ?? coordinators.find(c => c.sessionId !== null && c.archived !== true))?.sessionId)}
+          matriarc={<MatriarcControl state={state?.matriarc} t={t} disabled={busy === 'new' || busy === 'choose'} notice={navigatorRow} onSet={onSetMatriarc} />}
           onCreate={(options) => { void create(options) }} onCancel={() => { setCreateError(undefined); setDraft(undefined) }} />}
         {__DSH_COORDINATOR_DEV__ && fake && <p className="dco-dev-note" data-testid="dco-fake">Fake data source (?coordinatorSource=real to switch back)</p>}
         {problems.map(problem => <ProblemNotice key={problem.kind} problem={problem} t={t} />)}

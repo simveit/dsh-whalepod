@@ -294,6 +294,8 @@ export class FakeHost {
   readonly commandLines: { session: string; line: string }[] = []
   /** Set to make the next `/matriarc` line settle as an error result with this text. */
   matriarcError: string | undefined
+  /** Registered subagent providers (dsh-subagent's internal map); `useMatriarc` adds the navigator `nav`. */
+  readonly subagentProviders = new Map<string, { name: string; inheritsParentContext: boolean; start?: unknown; childAgent?: string }>()
   /** The navigators the fake Matriarc command's hint lists (none: `[on|off]`). */
   matriarcNavigators: string[] = ['nav']
 
@@ -303,6 +305,7 @@ export class FakeHost {
    */
   useMatriarc(): void {
     this.matriarcLoaded = true
+    this.subagentProviders.set('nav', NAVIGATOR_PROVIDER('nav'))
     if (!this.globalTools.includes('matriarc')) this.globalTools.push('matriarc')
   }
   private matriarcLoaded = false
@@ -370,6 +373,8 @@ export class FakeHost {
       },
     })
     this.services.set('subagents', {
+      providers: host.subagentProviders,
+      getProvider: (name: string) => host.subagentProviders.get(name),
       interrupt: (id: string, authority: { kind: string }) => {
         host.interrupts.push(id)
         host.agentsById.get(id)?.cancel({ kind: authority.kind === 'user' ? 'user' : 'parent' })
@@ -656,6 +661,22 @@ export class FakeHost {
     return undefined
   }
 
+  /**
+   * The names of the system prompt sections an agent gets, after the `system-prompt/assemble` waterfall, as
+   * dsh-system-prompt assembles them. Besides the plugin's own (named `dsh-coordinator:role` when it has text), a loaded
+   * fake Matriarc contributes `dsh-matriarc:rules` while its switch is on in that Session and a navigator is listed
+   * (dsh-matriarc `isVisible`).
+   */
+  async promptSections(agent: FakeAgent): Promise<string[]> {
+    const sections = this.sections.map(section => ({ name: 'dsh-coordinator:role', text: section.text({ agent }) }))
+    if (this.matriarcLoaded && agent.matriarc && this.matriarcNavigators.length > 0) sections.push({ name: 'dsh-matriarc:rules', text: 'Matriarc is on: …' })
+    const assembly = { sections, contexts: [], variables: {} }
+    const list = this.listeners.get('system-prompt/assemble') ?? []
+    const run = (i: number): Promise<typeof assembly> => (i >= list.length ? Promise.resolve(assembly)
+      : (list[i]!.fn as (...a: unknown[]) => Promise<typeof assembly>)(assembly, { agent }, () => run(i + 1)))
+    return (await run(0)).sections.filter(section => section.text !== '').map(section => section.name)
+  }
+
   toolsFor(sessionId: string): string[] {
     return this.tools.filter(t => t.when({ agent: { id: sessionId } })).map(t => t.def.name)
   }
@@ -729,6 +750,9 @@ export function scratch(name: string): string {
 }
 
 /** Build a ThreadService on a fake host; `before` may write a state file or add live agents first. */
+/** A subagent provider that runs another coding agent out of process: what Matriarc counts as a navigator. */
+export const NAVIGATOR_PROVIDER = (name: string) => ({ name, inheritsParentContext: false, start: () => undefined, childAgent: 'foreign' })
+
 export function rig(name: string, options: { config?: Record<string, unknown>; host?: FakeHost; dir?: string; deps?: Partial<ThreadServiceDeps>; prompts?: { coordinator: string; thread: string }; before?: (r: { host: FakeHost; stateFile: string; root: string; home: string }) => void } = {}): Rig {
   const dir = options.dir ?? scratch(name)
   const home = join(dir, 'home')

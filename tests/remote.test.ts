@@ -16,9 +16,9 @@ function fullState(): CoordinatorState {
         memoryBy: { by: 'executor', executorId: 't-1', executorTitle: 'a', at: 9 }, memoryOff: true, home: '/h/coordinator-2', folder: '/h/elsewhere', folderProblem: 'refused: inside ~/Library',
         model: { ok: false, reason: 'model-unavailable', model: 'p/m' },
         coordinatorModel: { provider: 'p', model: 'm', reasoningEffort: 'high' }, executorModel: { provider: 'q', model: 'n' },
-        coordinatorMatriarc: true, executorMatriarc: false, createdAt: 2, updatedAt: 3 },
+        createdAt: 2, updatedAt: 3 },
       { id: 'c-1', sessionId: null, name: 'Feynman', title: 'Coordinator Feynman', home: '/h/dsh-threads', folder: '/h/dsh-threads', archived: true, chatArchived: true,
-        model: { ok: true, model: 'p/m' }, coordinatorMatriarc: false, executorMatriarc: true, createdAt: 1, updatedAt: 1 },
+        model: { ok: true, model: 'p/m' }, createdAt: 1, updatedAt: 1 },
     ],
     threads: [
       { id: 't-1', sessionId: '', title: 'a', cwd: '/x', status: 'needs-user', coordinatorId: 'c-2', statusDetail: 'confirm',
@@ -36,7 +36,7 @@ function fullState(): CoordinatorState {
     problems: [{ kind: 'bad-root', detail: 'x' }, { kind: 'state-dropped', detail: 'y' }],
     allowedFolders: ['/h/dev/site'],
     threadPermission: { mode: 'auto', autoAvailable: true, effective: 'auto' },
-    matriarc: { installed: true },
+    matriarc: { installed: true, enabled: true, navigator: false },
   }
 }
 
@@ -107,8 +107,6 @@ test('the client spec has the executor prompt, memory and rename methods', () =>
     ['setCoordinatorMemory', { coordinatorId: 'c-2', text: '- Short reports.', revision: 4 }, { saved: false, coordinator: info }],
     ['setCoordinatorMemoryEnabled', { coordinatorId: 'c-2', enabled: false }, info],
     ['renameCoordinator', { coordinatorId: 'c-2', name: 'Hypatia' }, info],
-    ['setCoordinatorMatriarcEnabled', { coordinatorId: 'c-2', enabled: true }, info],
-    ['setExecutorMatriarcEnabled', { coordinatorId: 'c-2', enabled: false }, info],
   ] as const) {
     const spec = methods[`coordinator/${method}`]!
     assert.ok(spec !== undefined, method)
@@ -127,13 +125,18 @@ test('the client spec has the executor prompt, memory and rename methods', () =>
 
 test('the client spec mirrors the round-2 Remote methods', () => {
   for (const name of ['getState', 'ensureCoordinator', 'createCoordinator', 'setCoordinatorFolder', 'archiveCoordinator', 'archiveThread',
-    'confirmFolder', 'removeAllowedFolder', 'resumeThread', 'setThreadPermission', 'ping']) {
+    'confirmFolder', 'removeAllowedFolder', 'resumeThread', 'setThreadPermission', 'setMatriarc', 'ping']) {
     assert.ok(methods[`coordinator/${name}`] !== undefined, name)
   }
   const param = (method: string) => methods[`coordinator/${method}`]!.parameters[0]!
   assert.equal(param('ensureCoordinator').acceptsUndefined, true)
   assert.equal(param('createCoordinator').acceptsUndefined, true)
   assert.equal(param('setCoordinatorFolder').acceptsUndefined, undefined)
+  assert.equal(param('setMatriarc').name, 'enabled')
+  assert.equal(param('setMatriarc').codec.create().parse(false), false)
+  assert.throws(() => param('setMatriarc').codec.create().parse('off'))
+  assert.equal(methods['coordinator/setCoordinatorMatriarcEnabled'], undefined)
+  assert.equal(methods['coordinator/setExecutorMatriarcEnabled'], undefined)
   assert.deepEqual(param('archiveCoordinator').codec.create().parse({ coordinatorId: 'c', force: true, removeWorkspace: true }),
     { coordinatorId: 'c', force: true, removeWorkspace: true })
   const ensure = methods['coordinator/ensureCoordinator']!.result.create()

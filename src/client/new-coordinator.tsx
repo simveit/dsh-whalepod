@@ -16,7 +16,8 @@
  * What was typed, proposed and chosen lives in the page's draft (`NewCoordinatorDraft` in store.ts) and is reported
  * with `onDraft`: the form is taken down while the folder picker is open and built again for the picked folder, and it
  * shows the same name and models then.
- * Two Matriarc switches (coordinator off, Executor Sessions on) are sent with Create; disabled while Matriarc is not installed.
+ * The global Matriarc switch is shown here too (`matriarc`, rendered by the page); it changes the setting at once, for
+ * every Orchestrator, and is not part of the Create request.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { CoordinatorInfo, CreateCoordinatorRequest, NewCoordinatorSetup } from '../types.ts'
@@ -28,9 +29,9 @@ import { NAME_MAX, newCoordinatorRequest, newNameProblem, reloadedSetup, type Ne
 import { Button } from './ui.tsx'
 
 /** What the form may change in the page's draft. */
-export type NewCoordinatorPatch = Partial<Pick<NewCoordinatorDraft, 'name' | 'setup' | 'coordinatorModel' | 'executorModel' | 'coordinatorMatriarc' | 'executorMatriarc'>>
+export type NewCoordinatorPatch = Partial<Pick<NewCoordinatorDraft, 'name' | 'setup' | 'coordinatorModel' | 'executorModel'>>
 
-export function NewCoordinatorForm({ draft, coordinators, basePath, busy, error, t, dsh, loadSetup, watch, matriarcNotice, onDraft, onCreate, onCancel }: {
+export function NewCoordinatorForm({ draft, coordinators, basePath, busy, error, t, dsh, loadSetup, watch, matriarc, onDraft, onCreate, onCancel }: {
   draft: NewCoordinatorDraft; coordinators: readonly CoordinatorInfo[]; t: Translate
   /** Where the typed path starts (the base for new coordinators). */
   basePath: string
@@ -45,8 +46,8 @@ export function NewCoordinatorForm({ draft, coordinators, basePath, busy, error,
   watch: (listener: () => void) => () => void
   /** The name field, the proposal or a picker changed: the page keeps it in the draft. */
   onDraft: (patch: NewCoordinatorPatch) => void
-  /** Matriarc's "no navigator" notice, shown while Matriarc is installed. */
-  matriarcNotice?: ReactNode
+  /** The global Matriarc switch (nothing while Matriarc is not installed). */
+  matriarc?: ReactNode
   onCreate: (request: CreateCoordinatorRequest) => void
   onCancel: () => void
 }) {
@@ -106,7 +107,6 @@ export function NewCoordinatorForm({ draft, coordinators, basePath, busy, error,
   const coordinatorModel = formModel(draft.coordinatorModel, setup?.coordinatorModel)
   const executorModel = formModel(draft.executorModel, setup?.executorModel)
   const empty = setup !== undefined && setup.groups.length === 0
-  const matriarc = setup?.matriarc?.installed === true
   const reloadButton = <button type="button" className="dco-model-reload" onClick={() => { setFailed(false); setReload(n => n + 1) }}>{copy('action.reload', 'models.reload')}</button>
 
   return <form className="dco-path dco-new" data-testid="dco-new-form" data-kind={draft.kind} onSubmit={(event) => { event.preventDefault(); submit() }} onKeyDown={keys}>
@@ -149,20 +149,7 @@ export function NewCoordinatorForm({ draft, coordinators, basePath, busy, error,
     {setup?.partial === true && !empty && <p className="dco-model-note" data-testid="dco-new-model-partial">{t('models.partial')}</p>}
     {empty && !setup.partial && <p className="dco-model-note" data-testid="dco-new-model-none">{t('models.none')}</p>}
     <p className="dco-path-hint">{t('newCoordinator.models.hint')}</p>
-    <div className="dco-new-field" data-testid="dco-new-matriarc">
-      <label className="dco-check">
-        <input type="checkbox" checked={draft.coordinatorMatriarc ?? false} disabled={busy || !matriarc} data-testid="dco-new-matriarc-coordinator"
-          onChange={(event) => { onDraft({ coordinatorMatriarc: event.currentTarget.checked }) }} />
-        <span>{t('matriarc.coordinator')}</span>
-      </label>
-      <label className="dco-check">
-        <input type="checkbox" checked={draft.executorMatriarc ?? true} disabled={busy || !matriarc} data-testid="dco-new-matriarc-executor"
-          onChange={(event) => { onDraft({ executorMatriarc: event.currentTarget.checked }) }} />
-        <span>{t('matriarc.executor')}</span>
-      </label>
-      {setup !== undefined && !matriarc && <p className="dco-model-note" role="status">{t('matriarc.notInstalled')}</p>}
-      {matriarc && matriarcNotice}
-    </div>
+    {matriarc}
     {error !== undefined && <p className="dco-field-error" role="alert" data-testid="dco-new-error">{error}</p>}
     <span className="dco-path-buttons dco-new-buttons">
       <Button variant="ghost" size="sm" disabled={busy} onClick={onCancel}>{t('folder.cancel')}</Button>

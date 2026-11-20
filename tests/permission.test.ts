@@ -5,6 +5,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { parseConfig } from '../src/host/ids.ts'
 import { parseState } from '../src/host/store.ts'
 import { rig, tick, withCoordinator } from './harness.ts'
@@ -82,4 +83,28 @@ test('the config default applies until the user picks', async () => {
   r.service.setThreadPermission('auto')
   const next = await start(r, 'Now auto')
   assert.equal(r.host.presets.get(next['sessionId'] as string), 'auto')
+})
+
+test('Orchestrator chats: auto while Executor Sessions run in auto review and it is loaded, else workspace-write; at unload off auto', async () => {
+  const r = await withCoordinator('perm-chat')
+  assert.equal(r.host.presets.get(r.coordinator.id), 'auto')
+  // Ask me: chats made afterwards run on workspace-write; the existing chat keeps its preset.
+  r.service.setThreadPermission('ask')
+  const ask = await r.service.createCoordinator({ home: join(r.dir, 'h2') })
+  assert.equal(r.host.presets.get(ask.sessionId), 'workspace-write')
+  assert.equal(r.host.presets.get(r.coordinator.id), 'auto')
+  // Auto review not loaded: new chats fall back silently, and a chat on auto is moved off it at the catalog change.
+  r.service.setThreadPermission('auto')
+  const presets = r.host.services.get('permissionPresets') as { names: string[] }
+  presets.names = ['default', 'workspace-write', 'danger-full-access']
+  r.host.emit('permission-presets/catalog-changed')
+  assert.equal(r.host.presets.get(r.coordinator.id), 'workspace-write')
+  const noAuto = await r.service.createCoordinator({ home: join(r.dir, 'h3') })
+  assert.equal(r.host.presets.get(noAuto.sessionId), 'workspace-write')
+  // Unload: a chat on auto goes to workspace-write first.
+  presets.names = ['default', 'workspace-write', 'auto']
+  const last = await r.service.createCoordinator({ home: join(r.dir, 'h4') })
+  assert.equal(r.host.presets.get(last.sessionId), 'auto')
+  r.host.dispose()
+  assert.equal(r.host.presets.get(last.sessionId), 'workspace-write')
 })

@@ -19,9 +19,9 @@ Executor Sessions laufen standardmäßig im Auto review von dsh, wenn du das dsh
 ## Screenshots
 
 <p align="center">
-  <img src="docs/assets/screenshots/coordinator-page.png" width="800" alt="Die Orchestrator-Seite mit zwei Orchestratoren, Franklin und Shakespeare. Shakespeare ist ausgewählt und zeigt seinen Ordner, sein Orchestrator- und Executor-Modell und seinen Executor prompt.">
+  <img src="docs/assets/screenshots/coordinator-page.png" width="800" alt="Die Orchestrator-Seite mit zwei Orchestratoren, Franklin und Shakespeare, unter der Auswahl „Executor Sessions run in“. Shakespeare ist ausgewählt und zeigt seinen Ordner sowie sein Orchestrator- und Executor-Modell.">
 </p>
-<p align="center"><em>Die Orchestrator-Seite: Shakespeare ausgewählt, mit Ordner, Orchestrator- und Executor-Modell und Executor prompt.</em></p>
+<p align="center"><em>Die Orchestrator-Seite: Shakespeare ausgewählt, mit Ordner sowie Orchestrator- und Executor-Modell.</em></p>
 
 <p align="center">
   <img src="docs/assets/screenshots/coordinator-chat.png" width="800" alt="Der Chat von Shakespeare meldet, dass beide Aufgaben erledigt sind; rechts der Bereich Executor Sessions, links die Seitenleiste mit der Gruppe Shakespeare und je einer Gruppe pro Executor Session namens Shakespeare · Ordner.">
@@ -116,7 +116,7 @@ Eine Executor Session steht auf "Standing by", wenn ihre letzte Runde ohne Ergeb
 
 Löschst du einen Orchestrator-Chat stattdessen in der linken Seitenleiste, behält der Orchestrator seine Executor Sessions, und ihre Benachrichtigungen warten auf ihn. Die Seite zeigt dann den Zustand des Chats: "Chat archived", "Chat deleted", wenn die Session nicht mehr existiert, oder "No chat yet". "Reopen chat" (oder "Start chat", wenn es nie einen gab) legt im Ordner des Orchestrators einen neuen Chat für denselben Orchestrator an und übergibt, was gewartet hat.
 
-**Gemeinsame Einstellungen.** "Executor Sessions run in", die erlaubten Ordner und die Obergrenze gleichzeitig laufender Executor Sessions (`maxRunningThreads`) gelten für alle Orchestratoren zusammen. Name, die beiden Modelle, Executor prompt und Gedächtnis gehören zu jedem einzelnen Orchestrator. Ebenso zwei Matriarc-Schalter, für den Chat des Orchestrators (standardmäßig aus) und für neue Executor Sessions (standardmäßig an): Whalepod führt in der Session `/matriarc on` oder `/matriarc off` aus, wofür das Plugin Matriarc nötig ist.
+**Gemeinsame Einstellungen.** "Executor Sessions run in", die erlaubten Ordner und die Obergrenze gleichzeitig laufender Executor Sessions (`maxRunningThreads`) gelten für alle Orchestratoren zusammen. Ebenso der Schalter "Matriarc in Executor Sessions", der unter "Executor Sessions run in" und im Einrichtungsschritt nur erscheint, wenn das Plugin Matriarc installiert ist. Er ist standardmäßig an: Jede neue Executor Session startet mit Matriarc, und Orchestrator-Chats bekommen Matriarc nie, auch wenn man es in einem einschaltet. Aus lässt Whalepod Matriarc in Ruhe. Whalepod funktioniert mit dem Plugin Matriarc ebenso wie ohne; die Screenshots oben zeigen es ohne. Solange neue Executor Sessions in Auto review laufen und Auto review geladen ist, laufen neue Orchestrator-Chats ebenfalls in Auto review, mit denselben eingeschränkten Werkzeugen; sonst in Workspace Write. Name, die beiden Modelle, Executor prompt und Gedächtnis gehören zu jedem einzelnen Orchestrator.
 
 ## Konfiguration
 
@@ -144,6 +144,7 @@ Du kannst diese Zeile auch von Hand schreiben:
 | `threadTurnBudget` | `0` | Runden pro Executor Session in 24 Stunden, die die Executor Session, ihr Orchestrator, ein Peer oder ein Zeitplan startet (deine eigenen Runden zählen nicht); darüber hinaus pausiert sie, bis du sie fortsetzt. `0` heißt: kein Tagesbudget |
 | `coordinatorExtraTools` | `[]` | Zusätzliche Werkzeuge anderer Plugins oder MCP-Server, die die Orchestratoren nutzen dürfen, nach Namen. Werkzeuge, die Code ausführen, Dateien schreiben, Arbeit abzweigen, die Logs anderer Sessions lesen (`session_search` und ähnliche), Plugins verwalten oder Terminals, Browser oder Office-Dokumente bedienen, kommen nie dazu |
 | `peerMaxPerPair`, `peerMaxPerThread`, `peerWindowMs` | `40`, `200`, `600000` | Grenzen für `executor_send` pro Paar von Executor Sessions (beide Richtungen) und pro Absender. Die Nachricht über einer Grenze wird abgelehnt; die Paargrenze pausiert beide Executor Sessions, die Absendergrenze den Absender, bis du sie fortsetzt |
+| `matriarc` | `on` | Der Matriarc-Schalter, bis der Nutzer ihn auf der Orchestrator-Seite ändert: `on` (neue Executor Sessions starten mit Matriarc, Orchestrator-Chats bekommen es nie) oder `off` (Whalepod lässt Matriarc in Ruhe). Wirkt nur, solange Matriarc installiert ist. |
 | `threadPermission` | `auto` | Wie neue Executor Sessions laufen, bis der Nutzer auf der Orchestrator-Seite wählt: `auto` (Auto review, keine Datei-Sandbox) oder `ask` (Ask me, `workspace-write`: auf den Ordner der Executor Session beschränkt, Freigaben an den Nutzer). Jeder andere Wert gilt als `auto`; das Plugin verwendet nie ein lockereres Preset. |
 
 Die Schlüsselnamen sind dieselben wie in früheren Versionen, bestehende Patches funktionieren also weiter. Ein Wert, den ein Schlüssel ablehnt (unter seinem Minimum, eine unbekannte Auswahl), gilt als Standardwert des Schlüssels und verhindert nie das Laden des Plugins. Pro `DSH_HOME` betreibt nur ein dsh-Prozess die Orchestratoren; ein weiterer zeigt an, warum er deaktiviert ist.

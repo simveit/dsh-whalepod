@@ -19,7 +19,7 @@
  */
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  CoordinatorInfo, CreateCoordinatorRequest, EnsureCoordinatorResult, FolderDecision, ModelChoice, ModelChoices, NewCoordinatorSetup, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermission, ThreadPermissionState,
+  CoordinatorInfo, CreateCoordinatorRequest, EnsureCoordinatorResult, FolderDecision, MatriarcState, ModelChoice, ModelChoices, NewCoordinatorSetup, SetCoordinatorMemoryResult, ThreadInfo, ThreadPermission, ThreadPermissionState,
   ThreadStatus,
 } from '../types.ts'
 import type { ArchiveResult, ClientState, CoordinatorRemote } from './remote.ts'
@@ -50,8 +50,6 @@ export interface CoordinatorSource {
   setCoordinatorMemory(coordinatorId: string, text: string, revision: number, signal?: AbortSignal): Promise<SetCoordinatorMemoryResult>
   /** Switch the coordinator's memory on or off; off keeps the text. */
   setCoordinatorMemoryEnabled(coordinatorId: string, enabled: boolean, signal?: AbortSignal): Promise<CoordinatorInfo>
-  setCoordinatorMatriarcEnabled(coordinatorId: string, enabled: boolean, signal?: AbortSignal): Promise<CoordinatorInfo>
-  setExecutorMatriarcEnabled(coordinatorId: string, enabled: boolean, signal?: AbortSignal): Promise<CoordinatorInfo>
   /** The models dsh offers (by provider, with their reasoning efforts) and what the coordinator's two model settings resolve to. */
   listModelChoices(coordinatorId: string, signal?: AbortSignal): Promise<ModelChoices>
   /** The model the coordinator's chat runs on; null clears the setting (the chat keeps the model it has). */
@@ -65,6 +63,8 @@ export interface CoordinatorSource {
   /** Remove an archived coordinator's entry; its Sessions, folders and files stay. */
   deleteCoordinator(coordinatorId: string, signal?: AbortSignal): Promise<void>
   setThreadPermission(mode: ThreadPermission, signal?: AbortSignal): Promise<ThreadPermissionState>
+  /** The global Matriarc switch (every Orchestrator; Executor Sessions started from now on). */
+  setMatriarc(enabled: boolean, signal?: AbortSignal): Promise<MatriarcState>
   confirmFolder(id: string, decision: FolderDecision, signal?: AbortSignal): Promise<void>
   removeAllowedFolder(path: string, signal?: AbortSignal): Promise<void>
   resumeThread(id: string, signal?: AbortSignal): Promise<void>
@@ -132,15 +132,11 @@ export function remoteSource(remote: () => CoordinatorRemote | undefined): Coord
       ...(options?.suggestedName === undefined ? {} : { suggestedName: options.suggestedName }),
       ...(options?.coordinatorModel === undefined ? {} : { coordinatorModel: options.coordinatorModel }),
       ...(options?.executorModel === undefined ? {} : { executorModel: options.executorModel }),
-      ...(options?.coordinatorMatriarc === undefined ? {} : { coordinatorMatriarc: options.coordinatorMatriarc }),
-      ...(options?.executorMatriarc === undefined ? {} : { executorMatriarc: options.executorMatriarc }),
     }, signal)),
     setCoordinatorFolder: (coordinatorId, path, signal) => call(() => get().setCoordinatorFolder({ coordinatorId, path }, signal)),
     setExecutorPrompt: (coordinatorId, text, signal) => call(() => get().setExecutorPrompt({ coordinatorId, text }, signal)),
     setCoordinatorMemory: (coordinatorId, text, revision, signal) => call(() => get().setCoordinatorMemory({ coordinatorId, text, revision }, signal)),
     setCoordinatorMemoryEnabled: (coordinatorId, enabled, signal) => call(() => get().setCoordinatorMemoryEnabled({ coordinatorId, enabled }, signal)),
-    setCoordinatorMatriarcEnabled: (coordinatorId, enabled, signal) => call(() => get().setCoordinatorMatriarcEnabled({ coordinatorId, enabled }, signal)),
-    setExecutorMatriarcEnabled: (coordinatorId, enabled, signal) => call(() => get().setExecutorMatriarcEnabled({ coordinatorId, enabled }, signal)),
     listModelChoices: (coordinatorId, signal) => call(() => get().listModelChoices({ coordinatorId }, signal)),
     setCoordinatorModel: (coordinatorId, model, signal) => call(() => get().setCoordinatorModel({ coordinatorId, model }, signal)),
     setExecutorModel: (coordinatorId, model, signal) => call(() => get().setExecutorModel({ coordinatorId, model }, signal)),
@@ -151,6 +147,7 @@ export function remoteSource(remote: () => CoordinatorRemote | undefined): Coord
     archiveThread: async (id, signal) => { await call(() => get().archiveThread(id, signal)) },
     deleteCoordinator: async (coordinatorId, signal) => { await call(() => get().deleteCoordinator({ coordinatorId }, signal)) },
     setThreadPermission: (mode, signal) => call(() => get().setThreadPermission(mode, signal)),
+    setMatriarc: (enabled, signal) => call(() => get().setMatriarc(enabled, signal)),
     confirmFolder: async (id, decision, signal) => { await call(() => get().confirmFolder({ id, decision }, signal)) },
     removeAllowedFolder: async (path, signal) => { await call(() => get().removeAllowedFolder(path, signal)) },
     resumeThread: async (id, signal) => { await call(() => get().resumeThread(id, signal)) },
@@ -190,6 +187,7 @@ export function fakeSource(): CoordinatorSource {
   const min = 60_000
   let revision = 1
   let permission: ThreadPermission = 'auto'
+  let matriarc = true
   // Optional real Session ids, so opening them, the header chip, the pane and the row count can be tried in fake mode.
   let realSession: string | undefined
   let realCoordinator: string | undefined
@@ -206,11 +204,11 @@ export function fakeSource(): CoordinatorSource {
       folder: `${HOME}/Library/Mobile Documents/orchestrator-2`, folderProblem: 'the folder is inside ~/Library, which is refused',
       // An executor model that is no longer offered, so the page shows its fallback note.
       coordinatorModel: { provider: 'deepseek-account', model: 'deepseek-v4.1-pro', reasoningEffort: 'max' }, executorModel: { provider: 'signed-out', model: 'big-model' },
-      memory: FAKE_MEMORY_FEYNMAN, memoryRevision: 3, memoryBy: { by: 'coordinator', at: now - 38 * min }, coordinatorMatriarc: false, executorMatriarc: true, createdAt: now - 70 * min, updatedAt: now - 6 * min },
+      memory: FAKE_MEMORY_FEYNMAN, memoryRevision: 3, memoryBy: { by: 'coordinator', at: now - 38 * min }, createdAt: now - 70 * min, updatedAt: now - 6 * min },
     { id: A, sessionId: realCoordinator ?? 'fake-coordinator-1a2b', name: 'Noether', title: 'Noether', home: `${BASE}/orchestrator-noether`, folder: `${BASE}/orchestrator-noether`,
       model: { ok: false, reason: 'model-unavailable', model: 'deepseek-official/deepseek-v4.1-flash' },
       executorPrompt: 'Write tests before you change code.\nKeep commits small and explain each one in a sentence.\nAsk the Orchestrator before adding a dependency.',
-      memory: FAKE_MEMORY_NOETHER, memoryRevision: 7, memoryBy: { by: 'user', at: now - 3 * 60 * min }, coordinatorMatriarc: false, executorMatriarc: true, createdAt: now - 26 * 60 * min, updatedAt: now - 1 * min },
+      memory: FAKE_MEMORY_NOETHER, memoryRevision: 7, memoryBy: { by: 'user', at: now - 3 * 60 * min }, createdAt: now - 26 * 60 * min, updatedAt: now - 1 * min },
   ]
   let lastCoordinatorId: string | undefined = A
   const threads: ThreadInfo[] = [
@@ -255,10 +253,10 @@ export function fakeSource(): CoordinatorSource {
     const docs = `${BASE}/orchestrator-noether`
     coordinators.splice(0, coordinators.length,
       { id: B, sessionId: 'fake-coordinator-7f3e', name: '李白', title: '李白', home: `${BASE}/orchestrator-li-bai`,
-        folder: `${BASE}/orchestrator-li-bai`, coordinatorMatriarc: false, executorMatriarc: true, createdAt: now - 70 * min, updatedAt: now - 6 * min },
+        folder: `${BASE}/orchestrator-li-bai`, createdAt: now - 70 * min, updatedAt: now - 6 * min },
       { id: A, sessionId: realCoordinator ?? 'fake-coordinator-1a2b', name: 'Noether', title: 'Noether', home: docs, folder: docs,
         executorPrompt: 'Write tests before you change code.\nKeep commits small and explain each one in a sentence.\nAsk the Orchestrator before adding a dependency.',
-        coordinatorMatriarc: false, executorMatriarc: true, createdAt: now - 26 * 60 * min, updatedAt: now - 1 * min })
+        createdAt: now - 26 * 60 * min, updatedAt: now - 1 * min })
     const row = (id: string, coordinatorId: string, title: string, folder: string, over: Partial<ThreadInfo>): ThreadInfo =>
       ({ id, coordinatorId, sessionId: `fake-session-${id}`, title, cwd: `${docs}/${folder}`, status: 'idle', createdAt: now - 60 * min, updatedAt: now - 10 * min, ...over })
     threads.splice(0, threads.length,
@@ -292,7 +290,7 @@ export function fakeSource(): CoordinatorSource {
     for (let i = threads.length - 1; i >= 0; i--) if (threads[i]!.coordinatorId === B) { archivedRows.unshift({ ...threads[i]!, status: FINISHED.includes(threads[i]!.status) ? threads[i]!.status : 'stopped', action: undefined }); threads.splice(i, 1) }
     // A coordinator that never had a chat (for example adopted from a state file without one).
     coordinators.push({ id: 'c-0n0c', sessionId: null, name: 'Tagore', title: 'Tagore', chat: 'none', home: `${BASE}/orchestrator-tagore`, folder: `${BASE}/orchestrator-tagore`,
-      coordinatorMatriarc: false, executorMatriarc: true, createdAt: now - 10 * min, updatedAt: now - 10 * min })
+      createdAt: now - 10 * min, updatedAt: now - 10 * min })
   }
   if (scenario === 'readme' || scenario === 'empty') archivedRows.length = 0
   let nextId = 0x9a00
@@ -375,7 +373,6 @@ export function fakeSource(): CoordinatorSource {
     coordinators.push({
       id, sessionId: `fake-coordinator-${id}`, name, title: name, home: path, folder: path,
       ...(coordinatorModel === undefined ? {} : { coordinatorModel: { ...coordinatorModel } }), ...(executorModel === undefined ? {} : { executorModel: { ...executorModel } }),
-      coordinatorMatriarc: options.coordinatorMatriarc ?? false, executorMatriarc: options.executorMatriarc ?? true,
       createdAt: at, updatedAt: at,
     })
     lastCoordinatorId = id
@@ -386,7 +383,7 @@ export function fakeSource(): CoordinatorSource {
     coordinators: ordered().map(c => ({ ...c, chat: c.chat ?? (c.sessionId === null ? 'archived' : 'open') })), lastCoordinatorId, base: { path: BASE },
     revision, threads: threads.map(t => ({ ...t })), archivedThreads: archivedRows.map(t => ({ ...t })),
     threadPermission: { mode: permission, autoAvailable: true, effective: permission },
-    matriarc: { installed: true },
+    matriarc: { installed: true, enabled: matriarc, navigator: true },
     allowedFolders: [...allowed],
   })
   return {
@@ -418,7 +415,6 @@ export function fakeSource(): CoordinatorSource {
         name: free.length > 0 ? free[Math.floor(Math.random() * free.length)]! : `Noether ${coordinators.length + 1}`,
         groups: FAKE_MODELS.map(g => ({ ...g, models: g.models.map(m => ({ ...m })) })), partial: false,
         coordinatorModel: { ...FAKE_NEW_MODELS.coordinatorModel }, executorModel: { ...FAKE_NEW_MODELS.executorModel },
-        matriarc: { installed: true, coordinator: false, executor: true },
       }
     },
     async createCoordinator(options, signal) {
@@ -473,22 +469,6 @@ export function fakeSource(): CoordinatorSource {
       const record = find(coordinatorId)
       if (enabled) delete record.memoryOff
       else record.memoryOff = true
-      record.updatedAt = Date.now()
-      revision += 1
-      return { ...record }
-    },
-    async setCoordinatorMatriarcEnabled(coordinatorId, enabled, signal) {
-      await delay(signal)
-      const record = find(coordinatorId)
-      record.coordinatorMatriarc = enabled
-      record.updatedAt = Date.now()
-      revision += 1
-      return { ...record }
-    },
-    async setExecutorMatriarcEnabled(coordinatorId, enabled, signal) {
-      await delay(signal)
-      const record = find(coordinatorId)
-      record.executorMatriarc = enabled
       record.updatedAt = Date.now()
       revision += 1
       return { ...record }
@@ -579,6 +559,12 @@ export function fakeSource(): CoordinatorSource {
       permission = mode
       revision += 1
       return { mode, autoAvailable: true, effective: mode }
+    },
+    async setMatriarc(enabled, signal) {
+      await delay(signal)
+      matriarc = enabled
+      revision += 1
+      return { installed: true, enabled, navigator: true }
     },
     async confirmFolder(id, decision, signal) {
       await delay(signal)

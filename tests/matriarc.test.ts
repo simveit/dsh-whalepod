@@ -1,23 +1,18 @@
 /**
- * Matriarc per coordinator: `coordinatorMatriarc` (default off) puts `matriarc` on the coordinator chat's allow list and
- * runs `/matriarc on|off` in the chat; `executorMatriarc` (default on) is run by `executor_start` in each new Lead's
- * Session. Without the Matriarc plugin both are stored and do nothing.
+ * The global Matriarc switch (default on). On and Matriarc installed: `executor_start` runs `/matriarc on` in each new
+ * Lead's Session, and an Orchestrator chat never gets Matriarc's tool or its prompt section, even when its own switch
+ * is on there. Off, or Matriarc not installed: the plugin does nothing with Matriarc.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { TOOL } from '../src/host/names.ts'
 import { parseState } from '../src/host/store.ts'
-import type { CoordinatorInfo } from '../src/types.ts'
-import { FakeAgent, rig, tick, withCoordinator, type Rig } from './harness.ts'
+import { FakeAgent, NAVIGATOR_PROVIDER, rig, tick, withCoordinator, type Rig } from './harness.ts'
 
-const create = (r: Rig, request?: unknown) => (r.service.createCoordinator as (q?: unknown) => Promise<{ coordinatorId: string; sessionId: string }>)(request)
-const infoOf = (r: Rig, id: string): CoordinatorInfo => r.service.getState().coordinators.find(c => c.id === id)!
-const stored = (r: Rig) => (JSON.parse(readFileSync(r.stateFile, 'utf8')) as { coordinators: (Record<string, unknown> & { id: string })[] }).coordinators
-const setChat = (r: Rig, coordinatorId: unknown, enabled: unknown) => r.service.setCoordinatorMatriarcEnabled({ coordinatorId, enabled } as never)
-const setExec = (r: Rig, coordinatorId: unknown, enabled: unknown) => r.service.setExecutorMatriarcEnabled({ coordinatorId, enabled } as never)
 const withMatriarc = { before: ({ host }: { host: Rig['host'] }) => { host.useMatriarc() } }
 const matriarcLines = (r: Rig) => r.host.commandLines.filter(c => c.line.startsWith('/matriarc'))
+const storedState = (r: Rig) => JSON.parse(readFileSync(r.stateFile, 'utf8')) as Record<string, unknown> & { coordinators: Record<string, unknown>[] }
 
 async function start(r: Rig, coordinator: FakeAgent, title: string): Promise<{ lead: FakeAgent; result: Record<string, unknown> }> {
   r.host.userTurn(coordinator, `Please do: ${title}`)
@@ -27,133 +22,144 @@ async function start(r: Rig, coordinator: FakeAgent, title: string): Promise<{ l
   return { lead: r.host.agentOf(result['sessionId'] as string), result }
 }
 
-/** Whether the chat's allow list lists `matriarc`, and what the guard says to a call of it. */
-async function tool(r: Rig, chat: FakeAgent): Promise<{ listed: boolean; guard: string | undefined }> {
-  return { listed: chat.visibleTools().includes('matriarc'), guard: await r.host.policy(chat, 'matriarc', {}) }
+/** Whether the chat lists `matriarc`, what the guard says to a call of it, and whether its rules are in the prompt. */
+async function matriarcIn(r: Rig, chat: FakeAgent): Promise<{ listed: boolean; allowed: boolean; rules: boolean }> {
+  return {
+    listed: chat.visibleTools().includes('matriarc'),
+    allowed: await r.host.policy(chat, 'matriarc', {}) === undefined,
+    rules: (await r.host.promptSections(chat)).includes('dsh-matriarc:rules'),
+  }
 }
 
-test('defaults: off for the chat, on for executors; old and malformed records read as the defaults', async () => {
-  const r = await withCoordinator('matriarc-defaults', withMatriarc)
-  const info = infoOf(r, r.coordinatorId)
-  assert.deepEqual([info.coordinatorMatriarc, info.executorMatriarc], [false, true])
-  assert.deepEqual(r.service.getState().matriarc, { installed: true })
-  const record = stored(r).find(c => c.id === r.coordinatorId)!
-  assert.ok(!('coordinatorMatriarc' in record) && !('executorMatriarc' in record), 'defaults are not written')
-  const t = await tool(r, r.coordinator)
-  assert.equal(t.listed, false)
-  assert.match(t.guard ?? '', /an Orchestrator may not use matriarc/)
-  assert.deepEqual(matriarcLines(r), [], 'the default chat is not switched')
-  // A state file with other values than booleans reads as the defaults.
-  const file = JSON.parse(readFileSync(r.stateFile, 'utf8')) as { coordinators: Record<string, unknown>[] }
-  Object.assign(file.coordinators[0]!, { coordinatorMatriarc: 'yes', executorMatriarc: 0 })
-  const parsed = parseState(JSON.stringify(file)).coordinators[0]!
-  assert.ok(!('coordinatorMatriarc' in parsed) && !('executorMatriarc' in parsed))
-  Object.assign(file.coordinators[0]!, { coordinatorMatriarc: true, executorMatriarc: false })
-  const kept = parseState(JSON.stringify(file)).coordinators[0]!
-  assert.deepEqual([kept.coordinatorMatriarc, kept.executorMatriarc], [true, false])
+test('default on: a new Lead gets /matriarc on; the Orchestrator chat gets neither tool nor rules, even switched on there', async () => {
+  const r = await withCoordinator('matriarc-on', withMatriarc)
+  assert.deepEqual(r.service.getState().matriarc, { installed: true, enabled: true, navigator: true })
+  assert.deepEqual(matriarcLines(r), [], 'the Orchestrator chat is never switched')
+  const { lead } = await start(r, r.coordinator, 'First')
+  assert.equal(lead.matriarc, true)
+  assert.deepEqual(matriarcLines(r), [{ session: lead.id, line: '/matriarc on' }])
+  assert.deepEqual(await matriarcIn(r, lead), { listed: true, allowed: true, rules: true })
+  assert.deepEqual(await matriarcIn(r, r.coordinator), { listed: false, allowed: false, rules: false })
+  // The user turns Matriarc on in the Orchestrator chat itself (its model menu or `/matriarc on`): still neither.
+  r.coordinator.matriarc = true
+  assert.deepEqual(await matriarcIn(r, r.coordinator), { listed: false, allowed: false, rules: false })
   r.host.dispose()
 })
 
-test('create: the booleans are stored and the chat is switched; a non-boolean is refused before anything is made', async () => {
-  const r = rig('matriarc-create', withMatriarc)
-  await r.service.ready
-  assert.deepEqual((await r.service.newCoordinatorSetup()).matriarc, { installed: true, coordinator: false, executor: true })
-  const before = { coordinators: r.service.getState().coordinators.length, creates: r.host.creates, workspaces: r.host.workspaces.length }
-  for (const [field, value] of [['coordinatorMatriarc', 'true'], ['coordinatorMatriarc', null], ['executorMatriarc', 0]] as const) {
-    await assert.rejects(create(r, { [field]: value }), new RegExp(`${field} must be true or false`), `${field}=${JSON.stringify(value)}`)
-  }
-  assert.deepEqual({ coordinators: r.service.getState().coordinators.length, creates: r.host.creates, workspaces: r.host.workspaces.length }, before)
-
-  const on = await create(r, { coordinatorMatriarc: true, executorMatriarc: false })
-  const chat = r.host.agentOf(on.sessionId)
-  assert.deepEqual([infoOf(r, on.coordinatorId).coordinatorMatriarc, infoOf(r, on.coordinatorId).executorMatriarc], [true, false])
-  assert.equal(chat.matriarc, true)
-  assert.deepEqual(matriarcLines(r), [{ session: on.sessionId, line: '/matriarc on' }])
-  assert.deepEqual(await tool(r, chat), { listed: true, guard: undefined })
-
-  const plain = await create(r, {})
-  assert.deepEqual([infoOf(r, plain.coordinatorId).coordinatorMatriarc, infoOf(r, plain.coordinatorId).executorMatriarc], [false, true])
-  assert.equal(matriarcLines(r).length, 1, 'the default chat is not switched')
+test('on: matriarc in coordinatorExtraTools is still kept from the Orchestrator chat', async () => {
+  const r = await withCoordinator('matriarc-extra', { ...withMatriarc, config: { coordinatorExtraTools: ['matriarc'] } })
+  r.coordinator.matriarc = true
+  assert.deepEqual(await matriarcIn(r, r.coordinator), { listed: false, allowed: false, rules: false })
+  // Off: the plugin leaves Matriarc alone, so the user's extra tool and Matriarc's own switch apply again.
+  r.service.setMatriarc(false)
+  assert.deepEqual(await matriarcIn(r, r.coordinator), { listed: true, allowed: true, rules: true })
   r.host.dispose()
 })
 
-test('coordinator setter: the allow list and the chat follow at once, both ways; bad requests are refused', async () => {
-  const r = await withCoordinator('matriarc-chat', withMatriarc)
-  assert.equal((await setChat(r, r.coordinatorId, true)).coordinatorMatriarc, true)
-  assert.equal(r.coordinator.matriarc, true)
-  assert.deepEqual(await tool(r, r.coordinator), { listed: true, guard: undefined })
-  assert.equal(stored(r).find(c => c.id === r.coordinatorId)!['coordinatorMatriarc'], true)
-
-  assert.equal((await setChat(r, r.coordinatorId, false)).coordinatorMatriarc, false)
-  assert.equal(r.coordinator.matriarc, false)
-  const t = await tool(r, r.coordinator)
-  assert.equal(t.listed, false)
-  assert.match(t.guard ?? '', /an Orchestrator may not use matriarc/)
-  assert.deepEqual(matriarcLines(r).map(c => c.line), ['/matriarc on', '/matriarc off'])
-
-  // An error result is logged; the setting is still saved and the allow list follows it.
-  r.host.matriarcError = 'no navigator'
-  assert.equal((await setChat(r, r.coordinatorId, true)).coordinatorMatriarc, true)
-  assert.equal(r.coordinator.matriarc, false)
-  assert.equal((await tool(r, r.coordinator)).listed, true)
-
-  await assert.rejects(setChat(r, 'c-none', true), /unknown Orchestrator/)
-  for (const enabled of [undefined, 'true', 1, null]) await assert.rejects(setChat(r, r.coordinatorId, enabled), /enabled must be true or false/)
-  r.host.dispose()
-})
-
-test('executor setter: executor_start applies the value set now; running Executor Sessions keep theirs', async () => {
-  const r = await withCoordinator('matriarc-exec', withMatriarc)
+test('off: no /matriarc for new Leads, running ones keep theirs; the choice is stored globally and survives a restart', async () => {
+  const r = await withCoordinator('matriarc-off', withMatriarc)
   const first = await start(r, r.coordinator, 'First')
-  assert.equal(first.lead.matriarc, true)
-  assert.deepEqual(matriarcLines(r), [{ session: first.lead.id, line: '/matriarc on' }])
-
-  assert.equal(setExec(r, r.coordinatorId, false).executorMatriarc, false)
-  assert.equal(stored(r).find(c => c.id === r.coordinatorId)!['executorMatriarc'], false)
-  assert.equal(first.lead.matriarc, true)
+  assert.deepEqual(r.service.setMatriarc(false), { installed: true, enabled: false, navigator: true })
+  await tick(300)
+  assert.equal(storedState(r)['matriarc'], false)
   const second = await start(r, r.coordinator, 'Second')
+  assert.equal(first.lead.matriarc, true)
   assert.equal(second.lead.matriarc, false)
-  assert.deepEqual(matriarcLines(r).at(-1), { session: second.lead.id, line: '/matriarc off' })
+  assert.deepEqual(matriarcLines(r).map(c => c.session), [first.lead.id], 'nothing is run with the switch off')
+  for (const enabled of [undefined, 'true', 1, null]) assert.throws(() => r.service.setMatriarc(enabled), /enabled must be true or false/)
+  r.host.dispose()
+  const again = rig('matriarc-off', { dir: r.dir, ...withMatriarc })
+  await again.service.ready
+  assert.deepEqual(again.service.getState().matriarc, { installed: true, enabled: false, navigator: true })
+  again.host.dispose()
+})
 
-  // An error result is a note and never fails the start.
-  assert.equal(setExec(r, r.coordinatorId, true).executorMatriarc, true)
-  r.host.matriarcError = 'no navigator'
-  const third = await start(r, r.coordinator, 'Third')
-  assert.equal(third.result['error'], undefined)
-  assert.ok((third.result['notes'] as string[] | undefined)?.some(note => /Matriarc could not be switched on: no navigator/.test(note)), JSON.stringify(third.result))
-
-  assert.throws(() => setExec(r, 'c-none', true), /unknown Orchestrator/)
-  for (const enabled of [undefined, 'false', 0, null]) assert.throws(() => setExec(r, r.coordinatorId, enabled), /enabled must be true or false/)
+test('config default off; the user\'s choice wins over it', async () => {
+  const r = await withCoordinator('matriarc-config', { ...withMatriarc, config: { matriarc: 'off' } })
+  assert.deepEqual(r.service.getState().matriarc, { installed: true, enabled: false, navigator: true })
+  assert.equal((await start(r, r.coordinator, 'Off')).lead.matriarc, false)
+  r.service.setMatriarc(true)
+  assert.equal((await start(r, r.coordinator, 'On')).lead.matriarc, true)
   r.host.dispose()
 })
 
-test('no navigator: /matriarc on is not run and nothing is noted; off still runs; with a navigator it runs', async () => {
+test('no navigator: /matriarc on is not run and nothing is noted; an error result is a note, never a failed start', async () => {
   const r = await withCoordinator('matriarc-no-navigator', { before: ({ host }) => { host.useMatriarc(); host.matriarcNavigators = [] } })
   const { result } = await start(r, r.coordinator, 'No navigator')
   assert.equal(result['error'], undefined)
   assert.ok(!JSON.stringify(result['notes'] ?? []).includes('Matriarc'), JSON.stringify(result['notes']))
   assert.deepEqual(matriarcLines(r), [])
-  await setChat(r, r.coordinatorId, true)
-  assert.deepEqual(matriarcLines(r), [])
-  await setChat(r, r.coordinatorId, false)
-  assert.deepEqual(matriarcLines(r), [{ session: r.coordinator.id, line: '/matriarc off' }])
   r.host.matriarcNavigators = ['codex']
-  const next = await start(r, r.coordinator, 'With navigator')
-  assert.deepEqual(matriarcLines(r).at(-1), { session: next.lead.id, line: '/matriarc on' })
-  assert.equal(next.lead.matriarc, true)
+  r.host.matriarcError = 'no navigator'
+  const failed = await start(r, r.coordinator, 'Error')
+  assert.equal(failed.result['error'], undefined)
+  assert.ok((failed.result['notes'] as string[] | undefined)?.some(note => /Matriarc could not be switched on: no navigator/.test(note)), JSON.stringify(failed.result))
   r.host.dispose()
 })
 
-test('without Matriarc: the settings are stored, nothing throws, and the state says it is not installed', async () => {
+test('without Matriarc: not installed, nothing is run, the switch can still be stored', async () => {
   const r = await withCoordinator('matriarc-absent')
-  assert.deepEqual(r.service.getState().matriarc, { installed: false })
-  assert.deepEqual((await r.service.newCoordinatorSetup()).matriarc, { installed: false, coordinator: false, executor: true })
-  assert.equal((await setChat(r, r.coordinatorId, true)).coordinatorMatriarc, true)
-  assert.equal(setExec(r, r.coordinatorId, false).executorMatriarc, false)
-  assert.equal(r.coordinator.matriarc, false)
+  assert.deepEqual(r.service.getState().matriarc, { installed: false, enabled: true, navigator: false })
   const { result } = await start(r, r.coordinator, 'No plugin')
   assert.equal(result['error'], undefined)
   assert.ok(!JSON.stringify(result['notes'] ?? []).includes('Matriarc'))
-  assert.equal(infoOf(r, (await create(r, { coordinatorMatriarc: true })).coordinatorId).coordinatorMatriarc, true)
+  assert.deepEqual(matriarcLines(r), [])
+  assert.deepEqual(r.service.setMatriarc(false), { installed: false, enabled: false, navigator: false })
   r.host.dispose()
+})
+
+test('Matriarc loaded or removed while running: installed follows and the state revision moves, so the page updates', async () => {
+  const r = await withCoordinator('matriarc-live', withMatriarc)
+  r.host.emit('tools/change')
+  const before = r.service.getState().revision
+  r.host.globalTools = r.host.globalTools.filter(name => name !== 'matriarc')
+  r.host.emit('tools/change')
+  const removed = r.service.getState()
+  assert.equal(removed.matriarc?.installed, false)
+  assert.ok(removed.revision > before)
+  r.host.globalTools.push('matriarc')
+  r.host.emit('tools/change')
+  const back = r.service.getState()
+  assert.equal(back.matriarc?.installed, true)
+  assert.ok(back.revision > removed.revision)
+  r.host.dispose()
+})
+
+test('navigator: the state says whether one is registered, before any Session exists, and follows provider events', async () => {
+  const r = rig('matriarc-navigator', { before: ({ host }) => { host.useMatriarc(); host.subagentProviders.clear() } })
+  await r.service.ready
+  assert.equal(r.service.getState().matriarc?.navigator, false)
+  // An in-process (harness) provider does not count, as in Matriarc.
+  r.host.subagentProviders.set('fork', { name: 'fork', inheritsParentContext: true, start: () => undefined, childAgent: 'harness' })
+  assert.equal(r.service.getState().matriarc?.navigator, false)
+  const before = r.service.getState().revision
+  r.host.subagentProviders.set('claude-code', NAVIGATOR_PROVIDER('claude-code'))
+  r.host.emit('subagent/provider-added', NAVIGATOR_PROVIDER('claude-code'))
+  const added = r.service.getState()
+  assert.equal(added.matriarc?.navigator, true)
+  assert.ok(added.revision > before, 'the page polls the change')
+  r.host.subagentProviders.delete('claude-code')
+  r.host.emit('subagent/provider-removed', 'claude-code')
+  assert.equal(r.service.getState().matriarc?.navigator, false)
+  r.host.dispose()
+})
+
+test('a state file with the unreleased per-Orchestrator fields loads; the fields are ignored and dropped on save', async () => {
+  const r = await withCoordinator('matriarc-legacy', withMatriarc)
+  r.host.dispose()
+  const file = storedState(r)
+  Object.assign(file.coordinators[0]!, { coordinatorMatriarc: true, executorMatriarc: false })
+  writeFileSync(r.stateFile, JSON.stringify(file))
+  const parsed = parseState(JSON.stringify(file)).coordinators[0]! as unknown as Record<string, unknown>
+  assert.ok(!('coordinatorMatriarc' in parsed) && !('executorMatriarc' in parsed))
+  assert.equal(parseState(JSON.stringify({ ...file, matriarc: 'yes' })).matriarc, undefined, 'a non-boolean switch reads as unset')
+  const again = rig('matriarc-legacy', { dir: r.dir, ...withMatriarc })
+  await again.service.ready
+  assert.deepEqual(again.service.getState().matriarc, { installed: true, enabled: true, navigator: true })
+  again.service.setMatriarc(false)
+  await tick(300)
+  const saved = storedState(again)
+  assert.equal(saved['matriarc'], false)
+  assert.ok(saved.coordinators.every(c => !('coordinatorMatriarc' in c) && !('executorMatriarc' in c)))
+  again.host.dispose()
 })

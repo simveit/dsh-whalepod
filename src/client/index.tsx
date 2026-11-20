@@ -20,7 +20,7 @@ import { CoordinatorRowHover, CoordinatorRowTrailing } from './row-decor.tsx'
 import { mountThreadsPane } from './side-pane.tsx'
 import { fakeSource, remoteSource, wantsFakeSource } from './source.ts'
 import { CoordinatorStore, createThenOpen, errorText } from './store.ts'
-import { candidates, navigatorsOf, type BundleSummary, type LocalizedText } from './navigator.ts'
+import { candidates, type BundleSummary, type LocalizedText } from './navigator.ts'
 import { CSS, STYLE_ID } from './styles.ts'
 
 /** Same id for the sidebar entry and the main panel key: the sidebar opens the panel whose key matches. */
@@ -35,8 +35,6 @@ interface ClientRemote {
   /** Host events dsh forwards to the client (dsh's own model picker listens the same way). */
   $on?(event: string, listener: () => void): unknown
   coordinator?: CoordinatorRemote
-  /** dsh-commands/src/index.ts:314-320; reads the registry, writes nothing to the session (as dsh-matriarc reads it). */
-  commands?: { list(sessionId: string): Promise<{ ok: boolean; value?: readonly { name: string; input?: { hint: string } }[] }> }
   /** dsh-plugin-manager/src/index.ts:499-505; present where the Host offers plugin management. */
   pluginManager?: { listBundles(): Promise<{ ok: boolean; value?: readonly BundleSummary[] }> }
 }
@@ -155,14 +153,9 @@ export async function apply(ctx: ClientContext): Promise<void> {
     // Release builds drop the fake source entirely (__DSH_COORDINATOR_DEV__ is false there).
     const source = __DSH_COORDINATOR_DEV__ && wantsFakeSource() ? fakeSource() : remoteSource(() => uiCtx.remote.coordinator)
     const store = new CoordinatorStore(source)
-    // Matriarc's navigators and the Plugins page bundles, from scopes that inject those Remote namespaces (as
-    // dsh-matriarc reads them); without one the notice is not shown, or offers no bundle.
-    let commands: ClientRemote['commands']
+    // The Plugins page bundles Matriarc's "no navigator" notice offers, from a scope that injects that Remote namespace
+    // (as dsh-matriarc reads it); without it the notice offers no bundle. Whether a navigator exists comes from the host.
     let pluginManager: ClientRemote['pluginManager']
-    uiCtx.inject(['remote.commands'], (scope) => {
-      commands = (scope as ClientContext).remote.commands
-      scope.effect(() => () => { commands = undefined }, 'dsh-coordinator: commands')
-    })
     uiCtx.inject(['remote.pluginManager'], (scope) => {
       pluginManager = (scope as ClientContext).remote.pluginManager
       scope.effect(() => () => { pluginManager = undefined }, 'dsh-coordinator: plugin list')
@@ -231,8 +224,6 @@ export async function apply(ctx: ClientContext): Promise<void> {
         return result
       },
       setCoordinatorMemoryEnabled: async (coordinatorId, enabled) => { await store.source.setCoordinatorMemoryEnabled(coordinatorId, enabled); store.refresh() },
-      setCoordinatorMatriarcEnabled: async (coordinatorId, enabled) => { await store.source.setCoordinatorMatriarcEnabled(coordinatorId, enabled); store.refresh() },
-      setExecutorMatriarcEnabled: async (coordinatorId, enabled) => { await store.source.setExecutorMatriarcEnabled(coordinatorId, enabled); store.refresh() },
       listModelChoices: coordinatorId => store.source.listModelChoices(coordinatorId),
       watchModels: (listener) => { modelListeners.add(listener); return () => { modelListeners.delete(listener) } },
       setCoordinatorModel: async (coordinatorId, model) => { await store.source.setCoordinatorModel(coordinatorId, model); store.refresh() },
@@ -247,6 +238,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
       select: (coordinatorId) => { store.select(coordinatorId) },
       openSession: openReal,
       setThreadPermission: async (mode) => { await store.source.setThreadPermission(mode) },
+      setMatriarc: async (enabled) => { await store.source.setMatriarc(enabled) },
       confirmFolder: async (id, decision) => { await store.source.confirmFolder(id, decision) },
       removeAllowedFolder: async (path) => { await store.source.removeAllowedFolder(path) },
       resumeThread: async (id) => { await store.source.resumeThread(id) },
@@ -272,11 +264,8 @@ export async function apply(ctx: ClientContext): Promise<void> {
       },
       refresh: () => { store.refresh() },
       holdFast: () => store.holdFast(),
-      navigatorNotice: async (sessionId) => {
+      navigatorNotice: async () => {
         try {
-          const listed = await commands?.list(sessionId)
-          const command = listed?.ok === true ? listed.value?.find(entry => entry.name === 'matriarc') : undefined
-          if (command === undefined || navigatorsOf(command.input?.hint).length > 0) return undefined
           const bundles = await pluginManager?.listBundles().catch(() => undefined)
           return {
             candidates: candidates(bundles?.ok === true ? bundles.value ?? [] : []).map(c => ({ name: c.name, title: resolveText(c.title) })),

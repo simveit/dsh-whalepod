@@ -41,16 +41,14 @@ export declare function neverForCoordinator(name: string): boolean;
  * @param own - whether the plugin's own coordinator tools are included: for stored coordinators and candidates (a
  * candidate lists them, but the host refuses its calls until the user's first typed message promotes it); a fenced
  * Session gets none.
- * @param matriarc - add the Matriarc plugin's `matriarc` tool (a stored coordinator with `coordinatorMatriarc` on).
  */
-export declare function coordinatorWanted(extra: readonly string[], own?: boolean, matriarc?: boolean): Set<string>;
+export declare function coordinatorWanted(extra: readonly string[], own?: boolean): Set<string>;
 /**
  * The allow list for the coordinator: the wanted names that are registered now.
  * @param registered - global tool names the coordinator's scope can see (before this restriction).
  * @param extra - names from `coordinatorExtraTools`.
  * @param own - include the plugin's own coordinator tools.
- * @param matriarc - include `matriarc` (the coordinator's `coordinatorMatriarc` setting).
  */
-export declare function coordinatorAllow(registered: Iterable<string>, extra: readonly string[], own?: boolean, matriarc?: boolean): string[];
+export declare function coordinatorAllow(registered: Iterable<string>, extra: readonly string[], own?: boolean): string[];
 /** The names `tools.restrict()` reports as known when it refuses an unknown one (its error text), or undefined. */
 export declare function knownFromRestrictError(message: string): string[] | undefined;

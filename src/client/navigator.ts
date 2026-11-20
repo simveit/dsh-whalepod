@@ -32,5 +32,13 @@ export function candidates(bundles: readonly BundleSummary[]): { name: string; t
     .map(bundle => ({ name: bundle.name, title: bundle.meta?.title ?? bundle.name.slice(PREFIX.length) }))
 }
 
+/**
+ * Whether the page shows Matriarc's "no navigator" notice under the global switch: Matriarc is installed, the switch
+ * is on and the host found no navigator. Read from the state, so it needs no Session (an empty page, the setup step).
+ */
+export function wantsNavigatorNotice(state: { installed: boolean; enabled: boolean; navigator?: boolean } | undefined): boolean {
+  return state?.installed === true && state.enabled && state.navigator === false
+}
+
 /** The notice to show: no navigator is listed. `candidates` resolved to titles; `canOpen` when the Plugins page can be opened. */
 export interface NavigatorNotice { candidates: { name: string; title: string }[]; canOpen: boolean }

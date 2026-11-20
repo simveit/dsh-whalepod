@@ -191,6 +191,12 @@ export interface CoordinatorConfig {
      */
     threadPermission: 'auto' | 'ask';
     /**
+     * The Matriarc switch until the user picks on the Orchestrator page. `on`: new Executor Sessions get `/matriarc on`
+     * and Orchestrator chats never get Matriarc's tool or prompt section. `off`: the plugin leaves Matriarc alone. Does
+     * nothing while Matriarc is not installed.
+     */
+    matriarc: 'on' | 'off';
+    /**
      * Turns per thread per 24 hours that the thread itself, the coordinator, a peer or a schedule starts (the user's
      * own turns do not count). Past it the thread pauses until the user resumes it. 0 (the default) means no daily turn
      * budget; the wake and peer limits remain the loop brakes.

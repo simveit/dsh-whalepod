@@ -36,6 +36,7 @@ export const CSS = `
 .dco-intro { margin: 4px 0 0; max-width: 640px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
 .dco-head-perm { flex: 1 0 100%; min-width: 0; }
 .dco-head-perm .dco-perm { margin-top: 0; }
+.dco-head-perm .dco-perm.dco-matriarc { margin-top: 10px; }
 .dco-actions { display: flex; flex: none; align-items: center; gap: 8px; white-space: nowrap; }
 .dco-summary { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 6px 0 0; min-height: 20px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
 .dco-stat { display: inline-flex; align-items: center; gap: 6px; }
@@ -238,6 +239,13 @@ export const CSS = `
 .dco-perm-confirm { margin: 10px 0 0; max-width: 640px; }
 .dco-perm-ack { display: flex; align-items: flex-start; gap: 6px; margin-top: 6px; color: var(--dsw-alias-label-secondary); cursor: pointer; }
 .dco-perm-ack input { margin: 4px 0 0; }
+.dco-switch { position: relative; flex: 0 0 auto; width: 32px; height: 18px; padding: 0; border: none; border-radius: 9px; background: var(--dsw-alias-border-l3); cursor: pointer; transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease-in-out); }
+.dco-switch[aria-checked='true'] { background: var(--dsw-alias-state-business-primary); }
+.dco-switch:disabled { cursor: default; opacity: 0.5; }
+.dco-switch:focus-visible { box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline: none; }
+.dco-switch-knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--dsw-alias-bg-base); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: transform var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease-in-out); }
+.dco-switch[aria-checked='true'] .dco-switch-knob { transform: translateX(14px); }
+.dco-new .dco-matriarc { margin-top: 12px; }
 .dco-perm-error { margin: 6px 0 0; font-size: 12px; color: var(--dsw-alias-state-error-primary); }
 
 @container (max-width: 520px) {

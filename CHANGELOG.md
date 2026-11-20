@@ -2,10 +2,11 @@
 
 All notable changes to this plugin are listed here. Versions follow [Semantic Versioning](https://semver.org/). The DeepSeek Harness versions a release runs on are in `engines.dsh` in `package.json`.
 
-## Unreleased
+## 0.6.0 - 2026-11-20
 
 - The role formerly called Coordinator is now Orchestrator (编排者) in the UI, the prompts, the host's messages to models and the docs; ids, config keys, the storage folder and log marks keep `coordinator`.
-- Two Matriarc switches per Orchestrator, in the setup step and on the Orchestrator page: the Orchestrator chat (off by default) and new Executor Sessions (on by default). Whalepod runs `/matriarc on` or `/matriarc off` in the session; without the Matriarc plugin the switches do nothing.
+- Matriarc is one global switch now, an on/off toggle under "Executor Sessions run in" on the Orchestrator page and in the setup step. It is shown only while the Matriarc plugin is installed and is on by default. On: each new Executor Session starts with Matriarc on, and Orchestrator chats never get Matriarc's tool or its prompt section, even if you turn Matriarc on in one. Off: Whalepod leaves Matriarc alone. The Plugins page has the default as `matriarc` (`on` or `off`). While the toggle is on and no subagent plugin that runs another coding agent is enabled, Matriarc's own notice with its Open buttons shows under it, also on the empty page and in the setup step.
+- While new Executor Sessions run in Auto review and Auto review is loaded, new Orchestrator chats run in Auto review too, instead of Workspace Write. Their tools are unchanged: still no shell, write or network tools. Without Auto review, or with Ask me, they keep Workspace Write. When Auto review is removed or Whalepod unloads, they go back to Workspace Write.
 
 ## 0.5.0 - 2026-11-15
 

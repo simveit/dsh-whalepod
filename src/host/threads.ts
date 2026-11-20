@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readdirSync, rmdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import type {
-  ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, ModelChoices, ModelHealth, ModelOption, ModelSettingState, NewCoordinatorSetup, ReportKind, SetCoordinatorMemoryResult, ThreadAction, ThreadInfo, ThreadPermission, ThreadPermissionState, ThreadReport,
+  ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, DeleteCoordinatorResult, HostProblem, MatriarcState, ModelChoices, ModelHealth, ModelOption, ModelSettingState, NewCoordinatorSetup, ReportKind, SetCoordinatorMemoryResult, ThreadAction, ThreadInfo, ThreadPermission, ThreadPermissionState, ThreadReport,
 } from '../types.ts'
 import { isUserTyped, turnOpenedByUser, turnSawThreadData, userTypedTexts } from './authority.ts'
 import { coordinatorAllow, coordinatorWanted, knownFromRestrictError } from './coordinator-tools.ts'
@@ -22,7 +22,8 @@ import type {
   Agent, AgentDefaultModel, AgentPresets, AgentTeams, HostContext, Llm, PermissionPresets, PreStepDecision, PreStepPayload, SessionEvent, SessionId,
   Subagents, ToolExecution, UserMessage, UserQuestions, WorkingDirectory, Workspace,
 } from './dsh.ts'
-import { commandsOf } from './dsh.ts'
+import { commandsOf, MATRIARC_RULES, MATRIARC_TOOL, type PromptPresentation } from './dsh.ts'
+import { hasNavigator, type NavigatorProvider } from './navigators.ts'
 import { capLength, cleanUntrusted, fence, inlineUntrusted, neutraliseBlockTags, pathText, UNTRUSTED_HEADER } from './fence.ts'
 import { latestTodos, page, recent, todoLines, toEntries, type HistoryContext, type TodoItem } from './history.ts'
 import { checkCall, denialReason, type GuardDenial, type StateGuardEnv } from './home-guard.ts'
@@ -411,6 +412,12 @@ export class ThreadService implements ThreadOps {
   private loaded = false
   /** The permission mode the user picked on the Coordinator page; undefined: the configured default. */
   private permissionChoice: ThreadPermission | undefined
+  /** The Matriarc switch the user picked on the Orchestrator page; undefined = the config default (`matriarc`). */
+  private matriarcChoice: boolean | undefined
+  /** Whether Matriarc was installed at the last tool change, so a change of it bumps the state for the page. */
+  private matriarcSeen: boolean | undefined
+  /** Subagent providers announced since load (the fallback of `hasNavigator`). */
+  private readonly announcedProviders = new Map<string, NavigatorProvider>()
   private revision = 0
   /** Changes on every load, so a client can tell a restarted host from an unchanged one with the same revision. */
   private readonly epoch = randomBytes(6).toString('hex')
@@ -512,6 +519,8 @@ export class ThreadService implements ThreadOps {
     this.observe()
     this.registerTools()
     this.registerPrompt()
+    this.registerMatriarcGuard()
+    this.watchProviders()
     this.registerOpeningTurn()
     this.registerStepGate()
     this.registerHomeGuard()
@@ -521,6 +530,7 @@ export class ThreadService implements ThreadOps {
       // Leave every thread on the stricter preset: on a live removal dsh's auto-review bundle would switch `auto`
       // Sessions to full access; at app quit the next load puts the chosen mode back.
       this.applyPermissions(true)
+      this.applyChatPermissions(true)
       this.liftRestrictions()
       this.handOverWaiting()
       this.disposed = true
@@ -568,6 +578,7 @@ export class ThreadService implements ThreadOps {
       return { version: 2, revision: 0, coordinators: [], coordinatorWorkspaces: [], threads: [] }
     }
     if (state.threadPermission !== undefined) this.permissionChoice = state.threadPermission
+    if (state.matriarc !== undefined) this.matriarcChoice = state.matriarc
     this.revision = state.revision
     if (state.executorGroups === true) this.executorGroups = true
     if (state.degradedSince !== undefined) this.degradedSince ??= state.degradedSince
@@ -1156,8 +1167,6 @@ export class ThreadService implements ThreadOps {
       ...(c.memoryOff === true ? { memoryOff: true } : {}),
       ...(c.coordinatorModel === undefined ? {} : { coordinatorModel: c.coordinatorModel }),
       ...(c.executorModel === undefined ? {} : { executorModel: c.executorModel }),
-      ...(c.coordinatorMatriarc === true ? { coordinatorMatriarc: true } : {}),
-      ...(c.executorMatriarc === false ? { executorMatriarc: false } : {}),
       ...(c.marks === undefined ? {} : { marks: c.marks }),
       ...(c.pastSessionIds.length === 0 ? {} : { pastSessionIds: c.pastSessionIds.slice(-10) }),
       createdAt: c.createdAt, updatedAt: c.updatedAt,
@@ -1173,6 +1182,7 @@ export class ThreadService implements ThreadOps {
       coordinatorWorkspaces: [...this.coordinatorWorkspaces.values()].filter(w => homes.has(w.path)).map(w => ({ ...w })),
       threads,
       ...(this.permissionChoice === undefined ? {} : { threadPermission: this.permissionChoice }),
+      ...(this.matriarcChoice === undefined ? {} : { matriarc: this.matriarcChoice }),
       ...(this.allowedFolders.length === 0 ? {} : { allowedFolders: [...this.allowedFolders] }),
       ...(this.lastCoordinatorId === undefined ? {} : { lastCoordinatorId: this.lastCoordinatorId }),
       // Always written: a build that still has the old "remove thread groups" pass must never run it on this file.
@@ -1227,7 +1237,7 @@ export class ThreadService implements ThreadOps {
       ...(last === undefined ? {} : { lastCoordinatorId: last.id }),
       base: this.baseInfo(),
       threadPermission: this.threadPermission(),
-      matriarc: { installed: this.matriarcInstalled() },
+      matriarc: this.matriarcState(),
       allowedFolders: [...this.allowedFolders],
       ...(problems.length === 0 ? {} : { problem: problems[0]!, problems }),
       ...(this.loaded ? {} : { loading: true }),
@@ -1276,8 +1286,6 @@ export class ThreadService implements ThreadOps {
       ...(coord.health === undefined ? {} : { model: { ...coord.health } }),
       ...(coord.coordinatorModel === undefined ? {} : { coordinatorModel: { ...coord.coordinatorModel } }),
       ...(coord.executorModel === undefined ? {} : { executorModel: { ...coord.executorModel } }),
-      coordinatorMatriarc: coord.coordinatorMatriarc === true,
-      executorMatriarc: coord.executorMatriarc !== false,
       createdAt: coord.createdAt, updatedAt: coord.updatedAt,
     }
   }
@@ -1397,14 +1405,44 @@ export class ThreadService implements ThreadOps {
   }
 
   /**
-   * Put a coordinator chat on `workspace-write`. It has no write or shell tools (restrictCoordinator); the stricter
-   * sandbox is defence in depth, so a failure is ignored.
+   * Put a new coordinator chat on its preset: `auto` while new Executor Sessions run in auto review and dsh has it
+   * loaded (`threadPermission().effective`), else `workspace-write`. It has no write or shell tools either way
+   * (restrictCoordinator); the preset is defence in depth, so a failure is ignored. Set when the chat is made or becomes
+   * a candidate; a later change of the mode applies to chats made afterwards.
    */
   private sandboxChat(agent: Agent): void {
+    const presets = this.presets()
+    if (presets === undefined) return
+    if (this.threadPermission().effective === 'auto') {
+      try {
+        presets.set(agent.session, 'auto')
+        return
+      } catch {
+        // Falls back to workspace-write below.
+      }
+    }
     try {
-      this.presets()?.set(agent.session, 'workspace-write')
+      presets.set(agent.session, 'workspace-write')
     } catch {
       // Its tools are narrowed either way.
+    }
+  }
+
+  /**
+   * Move live coordinator chats off `auto` when auto review is gone or the plugin unloads: on a live removal dsh's
+   * auto-review bundle would switch `auto` Sessions to full access (as for thread leads in applyPermissions).
+   */
+  private applyChatPermissions(disposing: boolean): void {
+    const presets = this.presets()
+    if (presets === undefined || (!disposing && this.threadPermission().autoAvailable)) return
+    for (const id of [...this.coordinatorBySession.keys(), ...this.candidates.keys()]) {
+      const agent = this.ctx.agents.get(id)
+      if (agent === undefined) continue
+      try {
+        if (presets.current?.(agent.session) === 'auto') presets.set(agent.session, 'workspace-write')
+      } catch {
+        // Its tools are narrowed either way.
+      }
     }
   }
 
@@ -1428,6 +1466,46 @@ export class ThreadService implements ThreadOps {
       say(`new threads run in ${mode === 'auto' ? 'auto mode' : 'ask mode (workspace-write)'}`)
     }
     return this.threadPermission()
+  }
+
+  /** The global Matriarc switch: the user's choice, else the config; `installed` says whether it does anything. */
+  matriarcState(): MatriarcState {
+    return {
+      installed: this.matriarcInstalled(), enabled: this.matriarcChoice ?? this.config.matriarc === 'on',
+      navigator: hasNavigator(this.ctx.get('subagents' as never), this.announcedProviders),
+    }
+  }
+
+  /**
+   * The user switched Matriarc on or off on the Orchestrator page (owner only, no tool reaches it). On: Executor
+   * Sessions started from now on get `/matriarc on`, and Orchestrator chats lose Matriarc's tool and prompt section at
+   * once. Off: the plugin leaves Matriarc alone. Running Executor Sessions keep their switch either way.
+   */
+  setMatriarc(enabled: unknown): MatriarcState {
+    if (typeof enabled !== 'boolean') throw new Error('enabled must be true or false')
+    if (this.matriarcChoice !== enabled) {
+      this.matriarcChoice = enabled
+      for (const coord of this.coordinators.values()) {
+        const agent = coord.sessionId === null ? undefined : this.ctx.agents.get(coord.sessionId)
+        if (agent !== undefined) this.restrictCoordinator(agent)
+      }
+      for (const candidate of this.candidates.values()) this.restrictCoordinator(candidate.agent)
+      this.bump()
+      say(`Matriarc switched ${enabled ? 'on' : 'off'} by the owner`)
+    }
+    return this.matriarcState()
+  }
+
+  /** Matriarc is installed and switched on: Executor Sessions get it, Orchestrator chats never do. */
+  private matriarcActive(): boolean {
+    const { enabled, installed } = this.matriarcState()
+    return enabled && installed
+  }
+
+  /** `coordinatorExtraTools` without `matriarc` while the switch is active (the only way that tool could reach a chat). */
+  private coordinatorExtra(): readonly string[] {
+    const extra = this.config.coordinatorExtraTools
+    return this.matriarcActive() ? extra.filter(name => name !== MATRIARC_TOOL) : extra
   }
 
   /** Every live thread of every coordinator, newest first (the owner's view: the page, the pane, Remote callers). */
@@ -2354,7 +2432,7 @@ export class ThreadService implements ThreadOps {
     if (scope === undefined) return undefined
     if (scope.kind === 'coordinator') {
       // I5: the allow list holds even when narrowing the tool list failed, and for every coordinator-like chat.
-      if (!coordinatorWanted(this.config.coordinatorExtraTools, scope.own, this.matriarcChat(agent.id)).has(exec.name)) {
+      if (!coordinatorWanted(this.coordinatorExtra(), scope.own).has(exec.name)) {
         return {
           denial: { kind: 'not-allowed', match: exec.name },
           reason: scope.own
@@ -2561,10 +2639,16 @@ export class ThreadService implements ThreadOps {
         say(`session ${agent.id} was unloaded before its first message; it is no coordinator candidate any more`)
       }
     }) as never)
-    this.ctx.on('permission-presets/catalog-changed' as never, (() => { if (!this.disposed && !this.disposing) this.applyPermissions(false) }) as never)
+    this.ctx.on('permission-presets/catalog-changed' as never, (() => { if (!this.disposed && !this.disposing) { this.applyPermissions(false); this.applyChatPermissions(false) } }) as never)
     // A tool registered or a preset recomposed later: recompute the coordinator's list and the threads' denials.
     this.ctx.on('tools/change' as never, (() => {
       if (this.disposed || this.disposing || this.restricting) return
+      // Matriarc loaded or removed: the page shows or hides its switch on the next poll.
+      const installed = this.matriarcInstalled()
+      if (installed !== this.matriarcSeen) {
+        this.matriarcSeen = installed
+        this.bump()
+      }
       for (const { agent } of [...this.restrictions.values()]) {
         if (this.ctx.agents.get(agent.id) !== agent) { this.restrictions.delete(agent.id); continue }
         if (this.coordinatorLike(agent.id)) this.restrictCoordinator(agent)
@@ -2793,59 +2877,63 @@ export class ThreadService implements ThreadOps {
   /** Narrow a coordinator-like chat to its allow list (coordinator-tools.ts); the plugin's tools only for a stored one. */
   private restrictCoordinator(agent: Agent): void {
     const own = this.listsCoordinatorTools(agent.id)
-    const matriarc = this.matriarcChat(agent.id)
-    this.narrow(agent, names => ({ allow: coordinatorAllow(names, this.config.coordinatorExtraTools, own, matriarc) }))
+    this.narrow(agent, names => ({ allow: coordinatorAllow(names, this.coordinatorExtra(), own) }))
   }
 
   /** Whether the Matriarc plugin is loaded: a global tool named `matriarc` is registered. */
   private matriarcInstalled(): boolean {
     try {
-      return (this.ctx.tools.definitions?.() ?? []).some(def => def.name === 'matriarc')
+      return (this.ctx.tools.definitions?.() ?? []).some(def => def.name === MATRIARC_TOOL)
     } catch {
       return false
     }
   }
 
   /**
-   * Run `/matriarc on|off` in an Agent's Session through dsh's command runtime. Returns why it failed (an error result
-   * or a thrown error), else undefined; without the runtime or the command (Matriarc not loaded) it does nothing.
+   * Run `/matriarc on` in a new Executor Session's Lead through dsh's command runtime (logged as the user's command,
+   * which is what Matriarc's switch reads). Returns why it failed (an error result or a thrown error), else undefined;
+   * without the runtime or the command (Matriarc not loaded) it does nothing.
    */
-  private async switchMatriarc(agent: Agent, on: boolean): Promise<string | undefined> {
+  private async matriarcOn(agent: Agent): Promise<string | undefined> {
     const commands = commandsOf(this.ctx)
     if (commands === undefined) return undefined
     try {
       // Matriarc's command hint lists its navigators (`[on [a|b]|off]`); with none (`[on|off]`) it cannot be switched
       // on, so it is not tried, as in Matriarc's own menu.
-      const hint = commands.list?.(agent).find(command => command.name === 'matriarc')?.input?.hint
-      if (on && hint !== undefined && !/^\[on \[[^\]]+\]\|off\]$/.test(hint)) return undefined
-      const run = await commands.execute(agent, on ? '/matriarc on' : '/matriarc off', [], AbortSignal.timeout(10_000))
+      const hint = commands.list?.(agent).find(command => command.name === MATRIARC_TOOL)?.input?.hint
+      if (hint !== undefined && !/^\[on \[[^\]]+\]\|off\]$/.test(hint)) return undefined
+      const run = await commands.execute(agent, '/matriarc on', [], AbortSignal.timeout(10_000))
       return run?.result.kind === 'error' ? run.result.text ?? 'error' : undefined
     } catch (error) {
       return errorText(error)
     }
   }
 
-  /** A stored coordinator's chat with `coordinatorMatriarc` on: only it gets the `matriarc` tool. */
-  private matriarcChat(sessionId: string): boolean {
-    return this.coordinatorBySession.get(sessionId)?.coordinatorMatriarc === true
+  /** A navigator plugin came or went: the page shows or hides Matriarc's notice on the next poll. */
+  private watchProviders(): void {
+    this.ctx.on('subagent/provider-added' as never, ((provider: NavigatorProvider) => {
+      if (typeof provider?.name === 'string') this.announcedProviders.set(provider.name, provider)
+      if (!this.disposed) this.bump()
+    }) as never)
+    this.ctx.on('subagent/provider-removed' as never, ((name: string) => {
+      this.announcedProviders.delete(name)
+      if (!this.disposed) this.bump()
+    }) as never)
   }
 
   /**
-   * Apply `coordinatorMatriarc` to a coordinator's chat: re-narrow its tools and run `/matriarc on|off` in it (`agent`,
-   * else the open chat, resolved as `setCoordinatorModel` does). A failure is logged; the setting stays saved.
+   * While the switch is active, an Orchestrator chat (stored, candidate or fenced) never shows Matriarc's prompt
+   * section: it is dropped from the assembly here, whatever Matriarc's own per-session switch says (the user may have
+   * turned it on in that chat). Its tool is already outside the chat's allow list.
    */
-  private async applyChatMatriarc(coord: CoordinatorRecord, agent?: Agent): Promise<void> {
-    const enabled = coord.coordinatorMatriarc === true
-    let why: string | undefined
-    try {
-      const chat = agent ?? (coord.sessionId !== null && this.chatState(coord) === 'open' ? await this.agent(coord.sessionId) : undefined)
-      if (chat === undefined) return
-      this.restrictCoordinator(chat)
-      why = await this.switchMatriarc(chat, enabled)
-    } catch (error) {
-      why = errorText(error)
-    }
-    if (why !== undefined) say(`coordinator ${coord.id}: could not switch Matriarc ${enabled ? 'on' : 'off'} in its chat (${why})`)
+  private registerMatriarcGuard(): void {
+    this.ctx.on('system-prompt/assemble' as never, (async (assembly: PromptPresentation, context: { agent?: { id: string } }, next: () => Promise<PromptPresentation>) => {
+      const result = await next()
+      const id = context?.agent?.id
+      if (id === undefined || this.disposed || !this.coordinatorLike(id) || !this.matriarcActive()) return result
+      const sections = result.sections.filter(section => section.name !== MATRIARC_RULES)
+      return sections.length === result.sections.length ? result : { ...result, sections }
+    }) as never)
   }
 
   /**
@@ -3150,7 +3238,6 @@ export class ThreadService implements ThreadOps {
     reopened()
     this.coordinatorBySession.set(agent.id, coord)
     this.restrictCoordinator(agent)
-    if (coord.coordinatorMatriarc === true) await this.applyChatMatriarc(coord, agent)
     this.healthAt = 0
     this.bump()
     this.saveNow()
@@ -3178,18 +3265,12 @@ export class ThreadService implements ThreadOps {
    * model-defaults.ts are only what the form's pickers start on (`newCoordinatorSetup`), so a model is stored only
    * when the request names it. The chat starts on the coordinator model, as a replacement chat starts on a stored one.
    *
-   * `coordinatorMatriarc` (default false) and `executorMatriarc` (default true) must be booleans when given.
-   *
    * Every way a coordinator comes about without the form (`ensureCoordinator` with no coordinator, a New Session in a
    * coordinator's group, the upgrade of an earlier release, Reopen) keeps the automatic name and sets no model.
    */
-  createCoordinator(request: { home?: unknown; name?: unknown; suggestedName?: unknown; coordinatorModel?: unknown; executorModel?: unknown; coordinatorMatriarc?: unknown; executorMatriarc?: unknown } = {}): Promise<{ coordinatorId: string; sessionId: string }> {
-    const { home, name, suggestedName, coordinatorModel, executorModel, coordinatorMatriarc, executorMatriarc } = request ?? {}
+  createCoordinator(request: { home?: unknown; name?: unknown; suggestedName?: unknown; coordinatorModel?: unknown; executorModel?: unknown } = {}): Promise<{ coordinatorId: string; sessionId: string }> {
+    const { home, name, suggestedName, coordinatorModel, executorModel } = request ?? {}
     if (home !== undefined && (typeof home !== 'string' || home.trim() === '')) return Promise.reject(new Error('home must be a folder path'))
-    for (const [value, field] of [[coordinatorMatriarc, 'coordinatorMatriarc'], [executorMatriarc, 'executorMatriarc']] as const) {
-      if (value !== undefined && typeof value !== 'boolean') return Promise.reject(new Error(`${field} must be true or false`))
-    }
-    const matriarc = { coordinator: coordinatorMatriarc === true, executor: executorMatriarc !== false }
     let wanted: string | undefined
     if (name !== undefined && name !== null && !(typeof name === 'string' && name.trim() === '')) {
       const checked = checkCoordinatorName(name)
@@ -3210,7 +3291,7 @@ export class ThreadService implements ThreadOps {
       return Promise.reject(error as Error)
     }
     const suggested = typeof suggestedName === 'string' ? suggestedName : undefined
-    const run = this.creatingCoordinator.then(() => this.createOnce(home as string | undefined, wanted, suggested, models, matriarc))
+    const run = this.creatingCoordinator.then(() => this.createOnce(home as string | undefined, wanted, suggested, models))
     this.creatingCoordinator = run.catch(() => undefined)
     return run
   }
@@ -3238,14 +3319,12 @@ export class ThreadService implements ThreadOps {
       name: this.newName(), ...catalog,
       ...(coordinatorModel === undefined ? {} : { coordinatorModel }),
       ...(executorModel === undefined ? {} : { executorModel }),
-      matriarc: { installed: this.matriarcInstalled(), coordinator: false, executor: true },
     }
   }
 
   private async createOnce(
     requested: string | undefined, wanted: string | undefined, suggested: string | undefined,
     asked: { coordinator: ModelChoice | undefined; executors: ModelChoice | undefined },
-    matriarc: { coordinator: boolean; executor: boolean },
   ): Promise<{ coordinatorId: string; sessionId: string }> {
     await this.validated
     if (this.disposed) throw new Error('Whalepod is unloading')
@@ -3297,12 +3376,10 @@ export class ThreadService implements ThreadOps {
       const coord: CoordinatorRecord = {
         id, sessionId: agent.id, home, folder: home, workspaceId: workspace.id, name, title, marks: 'opening', pastSessionIds: [], held: [],
         ...(coordinatorModel === undefined ? {} : { coordinatorModel }), ...(executorModel === undefined ? {} : { executorModel }),
-        ...(matriarc.coordinator ? { coordinatorMatriarc: true } : {}), ...(matriarc.executor ? {} : { executorMatriarc: false }),
         createdAt: now, updatedAt: now,
       }
       this.addCoordinator(coord)
       this.restrictCoordinator(agent)
-      if (coord.coordinatorMatriarc === true) await this.applyChatMatriarc(coord, agent)
       this.lastCoordinatorId = coord.id
       this.healthAt = 0
       this.bump()
@@ -3851,29 +3928,6 @@ export class ThreadService implements ThreadOps {
     if (enabled) delete coord.memoryOff
     else coord.memoryOff = true
     return this.settingSaved(coord, `memory switched ${enabled ? 'on' : 'off'} by the owner`)
-  }
-
-  /** The owner switches Matriarc for a coordinator's chat (a Remote method; owner only); applies at once. */
-  async setCoordinatorMatriarcEnabled(request: { coordinatorId?: unknown; enabled?: unknown }): Promise<CoordinatorInfo> {
-    const { coordinatorId, enabled } = request ?? {}
-    const coord = this.requested(coordinatorId)
-    if (typeof enabled !== 'boolean') throw new Error('enabled must be true or false')
-    if (enabled === (coord.coordinatorMatriarc === true)) return this.coordinatorInfo(coord)
-    if (enabled) coord.coordinatorMatriarc = true
-    else delete coord.coordinatorMatriarc
-    await this.applyChatMatriarc(coord)
-    return this.settingSaved(coord, `coordinator Matriarc switched ${enabled ? 'on' : 'off'} by the owner`)
-  }
-
-  /** The owner switches Matriarc for new Executor Sessions (a Remote method; owner only); running ones keep theirs. */
-  setExecutorMatriarcEnabled(request: { coordinatorId?: unknown; enabled?: unknown }): CoordinatorInfo {
-    const { coordinatorId, enabled } = request ?? {}
-    const coord = this.requested(coordinatorId)
-    if (typeof enabled !== 'boolean') throw new Error('enabled must be true or false')
-    if (enabled === (coord.executorMatriarc !== false)) return this.coordinatorInfo(coord)
-    if (enabled) delete coord.executorMatriarc
-    else coord.executorMatriarc = false
-    return this.settingSaved(coord, `executor Matriarc switched ${enabled ? 'on' : 'off'} by the owner`)
   }
 
   /**
@@ -4481,12 +4535,14 @@ export class ThreadService implements ThreadOps {
       } catch (error) {
         notes.push(`Agent Teams could not be enabled: ${errorText(error)}`)
       }
-      // The coordinator's executor Matriarc setting as it is now; a failure is a note, never a failed start.
-      const matriarcOn = owner?.executorMatriarc !== false
-      const matriarcWhy = await this.switchMatriarc(agent, matriarcOn)
-      if (matriarcWhy !== undefined) {
-        say(`Executor Session ${id}: could not switch Matriarc ${matriarcOn ? 'on' : 'off'} (${matriarcWhy})`)
-        notes.push(`Matriarc could not be switched ${matriarcOn ? 'on' : 'off'}: ${matriarcWhy}`)
+      // The global Matriarc switch as it is now: on and installed, the Lead gets `/matriarc on`; off, Matriarc is left
+      // alone. A failure is a note, never a failed start.
+      if (this.matriarcActive()) {
+        const matriarcWhy = await this.matriarcOn(agent)
+        if (matriarcWhy !== undefined) {
+          say(`Executor Session ${id}: could not switch Matriarc on (${matriarcWhy})`)
+          notes.push(`Matriarc could not be switched on: ${matriarcWhy}`)
+        }
       }
       this.restrictThreadAgent(agent)
       // The thread's name is its session title (the sidebar row, header, tab and panel all show it).

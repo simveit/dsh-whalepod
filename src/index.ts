@@ -11,7 +11,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { principalOf, Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   ArchiveCoordinatorRequest, ArchiveCoordinatorResult, CoordinatorInfo, CoordinatorState, CreateCoordinatorRequest, EnsureCoordinatorRequest, EnsureCoordinatorResult,
-  DeleteCoordinatorRequest, DeleteCoordinatorResult, HostProblem, ListModelChoicesRequest, ModelChoices, NewCoordinatorSetup, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMatriarcEnabledRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorMatriarcEnabledRequest, SetExecutorPromptRequest, SetModelRequest, ThreadInfo, ThreadPermissionState,
+  DeleteCoordinatorRequest, DeleteCoordinatorResult, HostProblem, ListModelChoicesRequest, MatriarcState, ModelChoices, NewCoordinatorSetup, PingResult, RenameCoordinatorRequest, SetCoordinatorFolderRequest, SetCoordinatorMemoryEnabledRequest, SetCoordinatorMemoryRequest, SetCoordinatorMemoryResult, SetExecutorPromptRequest, SetModelRequest, ThreadInfo, ThreadPermissionState,
 } from './types.ts'
 import { HOST_INJECT, type HostContext } from './host/dsh.ts'
 import { type CoordinatorConfig } from './host/ids.ts'
@@ -291,22 +291,6 @@ export default class CoordinatorService extends TypertRemoteService {
     return this.service().setCoordinatorMemoryEnabled(request ?? {})
   }
 
-  /** Switch Matriarc on or off for a coordinator's chat; applies at once. Owner only. */
-  @Remote
-  async setCoordinatorMatriarcEnabled(request: SetCoordinatorMatriarcEnabledRequest, signal: AbortSignal): Promise<CoordinatorInfo> {
-    signal.throwIfAborted()
-    requireOwner(this.ctx)
-    return this.service().setCoordinatorMatriarcEnabled(request ?? {})
-  }
-
-  /** Switch Matriarc on or off for the Executor Sessions a coordinator starts afterwards. Owner only. */
-  @Remote
-  async setExecutorMatriarcEnabled(request: SetExecutorMatriarcEnabledRequest, signal: AbortSignal): Promise<CoordinatorInfo> {
-    signal.throwIfAborted()
-    requireOwner(this.ctx)
-    return this.service().setExecutorMatriarcEnabled(request ?? {})
-  }
-
   /** Rename a coordinator (its chat title and sidebar group follow; folders are never renamed). Owner only. */
   @Remote
   async renameCoordinator(request: RenameCoordinatorRequest, signal: AbortSignal): Promise<CoordinatorInfo> {
@@ -351,6 +335,17 @@ export default class CoordinatorService extends TypertRemoteService {
     signal.throwIfAborted()
     requireOwner(this.ctx)
     return this.service().setThreadPermission(mode)
+  }
+
+  /**
+   * The global Matriarc switch. On: Executor Sessions started from now on get `/matriarc on`, and Orchestrator chats
+   * never get Matriarc's tool or prompt section. Off: Whalepod leaves Matriarc alone. Owner only; no tool reaches it.
+   */
+  @Remote
+  async setMatriarc(enabled: boolean, signal: AbortSignal): Promise<MatriarcState> {
+    signal.throwIfAborted()
+    requireOwner(this.ctx)
+    return this.service().setMatriarc(enabled)
   }
 
   /**

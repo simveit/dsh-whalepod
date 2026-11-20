@@ -369,6 +369,20 @@ export interface SystemPrompt {
         required?: boolean;
     }): () => void;
 }
+/**
+ * What the `system-prompt/assemble` waterfall passes along (dsh-system-prompt `PromptPresentation`): the assembled
+ * sections by name, plus contexts and variables the plugin hands back unchanged. A listener may drop sections.
+ */
+export interface PromptPresentation {
+    readonly sections: readonly {
+        readonly name: string;
+        readonly text: string;
+    }[];
+    readonly [key: string]: unknown;
+}
+/** Matriarc's tool and command name, and the name of its prompt section (dsh-matriarc src/index.ts). */
+export declare const MATRIARC_TOOL = "matriarc";
+export declare const MATRIARC_RULES = "dsh-matriarc:rules";
 /** The context the thread service runs in, after its services are injected. */
 export type HostContext = Context & {
     workspaceRegistry: WorkspaceRegistry;

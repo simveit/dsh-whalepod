@@ -17,9 +17,9 @@ Executor Sessions run in dsh's Auto review by default when you have switched on 
 ## Screenshots
 
 <p align="center">
-  <img src="docs/assets/screenshots/coordinator-page.png" width="800" alt="The Orchestrator page with two Orchestrators, Franklin and Shakespeare. Shakespeare is selected and shows its folder, its Orchestrator and Executor models and its Executor prompt.">
+  <img src="docs/assets/screenshots/coordinator-page.png" width="800" alt="The Orchestrator page with two Orchestrators, Franklin and Shakespeare, under the Executor Sessions run in control. Shakespeare is selected and shows its folder and its Orchestrator and Executor models.">
 </p>
-<p align="center"><em>The Orchestrator page: Shakespeare selected, with its folder, its Orchestrator and Executor models and its Executor prompt.</em></p>
+<p align="center"><em>The Orchestrator page: Shakespeare selected, with its folder and its Orchestrator and Executor models.</em></p>
 
 <p align="center">
   <img src="docs/assets/screenshots/coordinator-chat.png" width="800" alt="Shakespeare's chat reporting that both jobs are done, the Executor Sessions pane on the right, and the left sidebar with the Shakespeare group and one group per Executor Session named Shakespeare · folder.">
@@ -114,7 +114,7 @@ An executor shows as Standing by when its last turn ended without a result and i
 
 If you delete an Orchestrator chat from the left sidebar instead, the Orchestrator keeps its Executor Sessions and their notices wait for it. The page then shows the chat's state: "Chat archived", "Chat deleted" when the session no longer exists, or "No chat yet". Reopen chat (or Start chat when there never was one) creates a new chat for the same Orchestrator in its folder and hands over what waited.
 
-**Shared settings.** "Executor Sessions run in", the allowed folders and the running cap (`maxRunningThreads`) apply to all Orchestrators together. The name, the two models, the Executor prompt and the memory, with its switch, belong to each Orchestrator. So do two Matriarc switches, for the Orchestrator chat (off by default) and for new Executor Sessions (on by default): Whalepod runs `/matriarc on` or `/matriarc off` in the session, which needs the Matriarc plugin.
+**Shared settings.** "Executor Sessions run in", the allowed folders and the running cap (`maxRunningThreads`) apply to all Orchestrators together. So does the "Matriarc in Executor Sessions" toggle, shown under "Executor Sessions run in" and in the setup step only when the Matriarc plugin is installed. It is on by default: each new Executor Session starts with Matriarc on, and Orchestrator chats never get Matriarc, even if you turn it on in one. Off, Whalepod leaves Matriarc alone. Whalepod works with the Matriarc plugin as well as without it; the screenshots above show it without. While new Executor Sessions run in Auto review and Auto review is loaded, new Orchestrator chats run in Auto review too, with the same limited tools; otherwise they run in Workspace Write. The name, the two models, the Executor prompt and the memory, with its switch, belong to each Orchestrator.
 
 ## Configuration
 
@@ -142,6 +142,7 @@ You can also write that row by hand:
 | `threadTurnBudget` | `0` | Turns per Executor Session per 24 hours that the executor, its Orchestrator, a peer or a schedule starts (your own turns do not count); past it the executor pauses until you resume it. `0` means no daily turn budget |
 | `coordinatorExtraTools` | `[]` | Extra tools of other plugins or MCP servers the Orchestrators may use, by name. Tools that execute code, write files, spawn work, read other sessions' logs (`session_search` and the like), manage plugins, or drive terminals, browsers or office documents are never added |
 | `peerMaxPerPair`, `peerMaxPerThread`, `peerWindowMs` | `40`, `200`, `600000` | Limits on `executor_send` per executor pair (both directions) and per sender. The message past a limit is refused, and the pair limit pauses both executors, the sender limit the sender, until you resume them |
+| `matriarc` | `on` | The Matriarc toggle until you change it on the Orchestrator page: `on` (new Executor Sessions start with Matriarc on, Orchestrator chats never get it) or `off` (Whalepod leaves Matriarc alone). Used only while Matriarc is installed. |
 | `threadPermission` | `auto` | How new Executor Sessions run until the user picks on the Orchestrator page: `auto` (Auto review, no file sandbox) or `ask` (Ask me, `workspace-write`: sandboxed to the executor's folder, approvals to the user). Any other value reads as `auto`; the plugin never uses a looser preset. |
 
 The key names are unchanged from earlier releases, so existing patches keep working. A value a key refuses (below its minimum, a choice it does not know) reads as the key's default and never stops the plugin from loading. Only one dsh process per `DSH_HOME` runs the Orchestrators; another one shows why it is disabled.

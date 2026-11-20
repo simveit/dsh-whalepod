@@ -72,10 +72,6 @@ export interface PersistedCoordinator {
     coordinatorModel?: ModelChoice;
     /** The model new Executor Sessions start on; absent = same as the coordinator. */
     executorModel?: ModelChoice;
-    /** The coordinator chat uses Matriarc; absent = false. */
-    coordinatorMatriarc?: boolean;
-    /** New Executor Sessions use Matriarc; absent = true. */
-    executorMatriarc?: boolean;
     /** Which log mark validation expects: the opening turn (or the legacy title), or the role mark of an adopted chat. */
     marks?: 'opening' | 'role';
     /** Chat Sessions this coordinator had before a Reopen; messages they sent into threads still read as the coordinator's. */
@@ -106,6 +102,12 @@ export interface PersistedState {
     threads: PersistedThread[];
     /** The permission mode the user picked for new threads; absent until they pick one (the config default applies). Global. */
     threadPermission?: 'auto' | 'ask';
+    /**
+     * The Matriarc switch the user picked on the Orchestrator page (on: new Executor Sessions get Matriarc, Orchestrator
+     * chats never do; off: the plugin leaves Matriarc alone); absent until they pick (the config default applies). Global.
+     * The per-coordinator fields of an unreleased first design (`coordinatorMatriarc`, `executorMatriarc`) are ignored on load and dropped.
+     */
+    matriarc?: boolean;
     /**
      * Folders outside every coordinator's folder the user chose "Always allow" for (real paths). Loaded entries are
      * hints only: each is checked by the folder guard again, a thread still needs the user to name the folder, and the

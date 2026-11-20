@@ -45,6 +45,7 @@ export const SETTINGS_SECTIONS: readonly { id: string; fields: readonly Settings
     id: 'behaviour',
     fields: [
       { key: 'threadPermission', kind: 'choice', choices: ['auto', 'ask'] },
+      { key: 'matriarc', kind: 'choice', choices: ['on', 'off'] },
       { key: 'briefAs', kind: 'choice', choices: ['user', 'notice'] },
       { key: 'coordinatorBase', kind: 'path' },
       { key: 'coordinatorExtraTools', kind: 'list' },

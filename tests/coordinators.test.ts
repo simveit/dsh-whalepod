@@ -67,11 +67,12 @@ test('a New Session in a coordinator Workspace is narrowed from its first step a
   assert.equal(adopted.folder, r.root)
   assert.equal(state.lastCoordinatorId, adopted.id)
   assert.ok(r.host.toolsFor(blank.id).includes(TOOL.start))
-  // It gets a name, and its chat the named title; D1: the same sandbox preset as a chat the plugin makes.
+  // It gets a name, and its chat the named title; D1: the same preset as a chat the plugin makes
+  // (auto, as new Executor Sessions run in auto review by default).
   await tick(5)
   assert.equal(adopted.name, 'Darwin')
   assert.equal(r.service.getState().coordinators.find(c => c.id === adopted.id)!.title, 'Darwin')
-  assert.equal(r.host.presets.get(blank.id), 'workspace-write')
+  assert.equal(r.host.presets.get(blank.id), 'auto')
   // A rename by the user in the sidebar is followed.
   blank.append('session/title', { title: 'Plan the release' })
   assert.equal(r.service.getState().coordinators.find(c => c.id === adopted.id)!.title, 'Plan the release')

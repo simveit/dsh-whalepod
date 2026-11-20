@@ -17,9 +17,9 @@ Whalepod（包名 `dsh-whalepod`）是 DeepSeek Harness（dsh）的一个插件�
 ## 截图
 
 <p align="center">
-  <img src="docs/assets/screenshots/coordinator-page.png" width="800" alt="“编排者”页面，有 Franklin 和 Shakespeare 两个编排者。选中的 Shakespeare 显示它的文件夹、编排者模型、执行器模型和执行器提示词。">
+  <img src="docs/assets/screenshots/coordinator-page.png" width="800" alt="“编排者”页面，在“执行器 Session 运行方式”选项下方有 Franklin 和 Shakespeare 两个编排者。选中的 Shakespeare 显示它的文件夹、编排者模型和执行器模型。">
 </p>
-<p align="center"><em>“编排者”页面：选中 Shakespeare，显示它的文件夹、编排者模型、执行器模型和执行器提示词。</em></p>
+<p align="center"><em>“编排者”页面：选中 Shakespeare，显示它的文件夹、编排者模型和执行器模型。</em></p>
 
 <p align="center">
   <img src="docs/assets/screenshots/coordinator-chat.png" width="800" alt="Shakespeare 的对话报告两项工作都已完成，右侧是执行器 Session 窗格，左侧边栏有 Shakespeare 分组，以及每个执行器 Session 各一个名为“Shakespeare · 文件夹”的分组。">
@@ -114,7 +114,7 @@ dsh plugin --profile desktop add github:simveit/dsh-whalepod
 
 如果你改为在左侧边栏中删除编排者对话，该编排者仍保留它的执行器，发给它的通知会先暂存。页面会显示对话的状态：“对话已归档”、会话已不存在时的“对话已删除”，或“还没有对话”。“重新打开对话”（从未有过对话时为“开始对话”）会在原文件夹中为同一个编排者创建新对话，并把暂存的通知交给它。
 
-**共享设置。** “执行器 Session 运行方式”、允许的文件夹以及同时运行的上限（`maxRunningThreads`）对所有编排者共同生效。名字、两个模型、执行器提示词和记忆属于各个编排者。两个 Matriarc 开关也属于各个编排者：编排者对话（默认关闭）和新的执行器 Session（默认开启）。Whalepod 会在该 Session 中运行 `/matriarc on` 或 `/matriarc off`，这需要安装 Matriarc 插件。
+**共享设置。** “执行器 Session 运行方式”、允许的文件夹以及同时运行的上限（`maxRunningThreads`）对所有编排者共同生效。“执行器 Session 使用 Matriarc”开关同样对所有编排者生效，只有安装了 Matriarc 插件时才会显示在其下方和创建步骤中。它默认开启：每个新的执行器 Session 启动时都开启 Matriarc，编排者对话从不使用 Matriarc，即使你在其中手动开启。关闭时 Whalepod 不处理 Matriarc。Whalepod 可以配合 Matriarc 插件使用，也可以不装；上面的截图是未安装 Matriarc 的样子。当新执行器以“自动审查”方式运行且已加载自动审查时，新的编排者对话也以自动审查方式运行，工具仍同样受限；否则使用工作区内修改。名字、两个模型、执行器提示词和记忆属于各个编排者。
 
 ## 配置
 
@@ -142,6 +142,7 @@ dsh plugin --profile desktop add github:simveit/dsh-whalepod
 | `threadTurnBudget` | `0` | 每个执行器每 24 小时内由执行器自身、其编排者、同伴或定时任务开启的轮次上限（你自己开启的轮次不计入）；超过后该执行器会暂停，直到你让它继续。`0` 表示不设每日轮次上限 |
 | `coordinatorExtraTools` | `[]` | 编排者可额外使用的其他插件或 MCP 服务器的工具，按名称列出。执行代码、写入文件、派生工作、读取其他会话日志（`session_search` 等）、管理插件、操作终端、浏览器或办公文档的工具永远不会被加入 |
 | `peerMaxPerPair`、`peerMaxPerThread`、`peerWindowMs` | `40`、`200`、`600000` | 每对执行器之间（双向合计）以及每个发送方使用 `executor_send` 的上限。超过上限的消息会被拒绝；超过每对上限时两个执行器都会暂停，超过发送方上限时发送方暂停，直到你让它们继续 |
+| `matriarc` | `on` | 在你于“编排者”页面切换之前的 Matriarc 开关：`on`（新的执行器 Session 启动时开启 Matriarc，编排者对话从不使用）或 `off`（Whalepod 不处理 Matriarc）。仅在安装了 Matriarc 时生效。 |
 | `threadPermission` | `auto` | 在用户于“编排者”页面做出选择之前，新执行器的运行方式：`auto`（自动审查，无文件沙箱）或 `ask`（询问我，`workspace-write`：限制在执行器的文件夹内，审批交给用户）。其他任何值都按 `auto` 处理；插件绝不会使用更宽松的预设。 |
 
 配置项名称与早期版本相同，现有的 patch 可以继续使用。配置项不接受的值（低于最小值、未知的选项）按该配置项的默认值处理，不会导致插件无法加载。每个 `DSH_HOME` 只有一个 dsh 进程运行编排者；其他进程会显示它被禁用的原因。

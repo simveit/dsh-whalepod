@@ -883,3 +883,22 @@ Nothing else in the dsh home became refused again through these fixes.
 **Folders.** A new Orchestrator's own folder is `<base>/orchestrator-<slug>`; existing ones keep the folder stored in their record, nothing is moved, and a left-over `coordinator-<slug>` folder does not block the new name.
 
 **Rejected.** Renaming the ids with the word: it would need a state-file version and an upgrade path for nothing the user sees.
+
+## 73. One global Matriarc switch; Orchestrator chats follow Auto review
+
+Replaces a first design with two Matriarc switches per Orchestrator (`coordinatorMatriarc`, `executorMatriarc`), which was built before 0.6.0 but never released.
+
+**Context.** The first design had two Matriarc switches per Orchestrator: one for its chat (default off) and one for its new Executor Sessions (default on). In testing, one switch on the top level was wanted instead. With it on, the Orchestrator should not have Matriarc, prompt section included, and the Executor Sessions should. The per-Orchestrator switches also allowed the opposite state. Turning the "Orchestrator uses Matriarc" switch on gave that chat Matriarc's tool and rules, a state nobody wanted. Separately, a user could turn Matriarc on in an Orchestrator chat from Matriarc's own menu. Whalepod kept the tool away, but Matriarc's rules section still reached the chat, because Matriarc shows it whenever the chat's own switch is on.
+
+**Decision.** One global switch, `matriarc` in the state file, with the config key `matriarc` (`on` or `off`, default `on`) as its default, set on the Orchestrator page and in the setup step by the owner through `setMatriarc`. The page and the setup step show it as an on/off toggle under "Executor Sessions run in", only while Matriarc is installed (a tool named `matriarc` is registered). On: `executor_start` runs `/matriarc on` in each new Lead, as the first design did. Orchestrator chats never get the tool, and a `system-prompt/assemble` listener drops Matriarc's `dsh-matriarc:rules` section from their assembly, whatever Matriarc's switch says in that chat. Off, or Matriarc not installed: Whalepod does nothing with Matriarc. While the switch is on and no navigator is registered, the page shows Matriarc's own notice under it. The host checks for a navigator as Matriarc does (a copy of its provider check), because reading Matriarc's command hint needs a Session, and an empty page or the setup step has none.
+
+The first design's fields are ignored on load and dropped at the next save. Adding the optional top-level `matriarc` needs no new state-file version, since older builds ignore unknown top-level fields.
+
+**Orchestrator preset.** A new Orchestrator chat runs on `auto` while new Executor Sessions run in Auto review and Auto review is loaded, else on `workspace-write` as before. The chat's tools are unchanged, so Auto review only adds a check of the read, search and plugin tools it has. At unload, or when Auto review goes away, a chat on `auto` is moved to `workspace-write`, as the executors are (T7).
+
+**Why the section filter and not `/matriarc off`.** Running `/matriarc off` in the chat would need Whalepod to watch for the user's `/matriarc on` there and undo it after the fact. dsh assembles a step's system prompt before `agent/pre-step`, so that step would still carry the rules. The assembly waterfall acts on every assembly and needs no state. The cost is that Matriarc's menu row in an Orchestrator chat can read on while nothing of Matriarc reaches the chat.
+
+**Why the first design looked broken.** The hypothesis that Whalepod's `commands.execute` logs a source other than `user` is wrong: dsh's `CommandRuntime.execute` always logs `source: { kind: 'user' }` (dsh-commands `src/index.ts` 361-378). The run on 2026-11-19 in the dev home showed `/matriarc on` succeeding in executors. Two facts explain what testing on the desktop showed. First, Whalepod skips `/matriarc on` silently while Matriarc's hint lists no navigator, and Matriarc shows nothing without one. The desktop's only navigator plugin, `dsh-subagent-codex` 0.2.2-rc.3, is refused at start on dsh 0.2.2-rc.5. Second, the per-Orchestrator chat switch was the way to give the Orchestrator Matriarc, tool and rules.
+
+**Rejected.** Keeping a per-Orchestrator executor switch next to the global one: one switch was asked for. Turning the switch off sending `/matriarc off` to new executors: off now means hands off.
+
